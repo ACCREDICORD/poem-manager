@@ -52,8 +52,9 @@ async def chat_complete(
     messages: list[dict],
     model: str | None = None,
     reasoning: str | None = None,
+    tools: list[dict] | None = None,
 ):
-    """非流式调用，返回完整响应 JSON（用于需要结构化输出的评审/裁判）。"""
+    """非流式调用，返回完整响应 JSON（用于结构化输出 / function calling）。"""
     model = model or MODELS["flash"]
     url = f"{DEEPSEEK_BASE_URL.rstrip('/')}/chat/completions"
     headers = {
@@ -61,6 +62,8 @@ async def chat_complete(
         "Content-Type": "application/json",
     }
     payload = {"model": model, "messages": messages, "stream": False}
+    if tools:
+        payload["tools"] = tools
     if reasoning == "none":
         payload["thinking"] = {"type": "disabled"}
     elif reasoning in ("low", "high", "max"):

@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from . import models  # noqa: F401  (register models before create_all)
 from .config import UPLOAD_DIR
 from .database import Base, SessionLocal, engine
-from .routers import chat, poems, templates
+from .routers import agent, chat, poems, templates
 from .seed_data import seed_templates
 
 Base.metadata.create_all(bind=engine)
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(poems.router, prefix="/api/poems", tags=["poems"])
 app.include_router(templates.router, prefix="/api/templates", tags=["templates"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
 
 # Serve uploaded poem images
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

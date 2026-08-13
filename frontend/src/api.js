@@ -123,3 +123,15 @@ export const chatApi = {
     return request(`/chat/history?session_id=${encodeURIComponent(sessionId)}`)
   },
 }
+
+export const agentApi = {
+  message(payload) {
+    return request('/agent/message', { method: 'POST', body: JSON.stringify(payload) })
+  },
+  step(sessionId, action) {
+    return request(`/agent/step?session_id=${encodeURIComponent(sessionId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    })
+  },
+}
