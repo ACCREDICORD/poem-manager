@@ -23,7 +23,8 @@ Base.metadata.create_all(bind=engine)
 # Seed preset templates + ensure a single user exists
 with SessionLocal() as db:
     seed_templates(db)
-    if db.query(models.User).count() == 0:
+    user = db.query(models.User).filter(models.User.username == ADMIN_USERNAME).first()
+    if user is None:
         password = ADMIN_PASSWORD or secrets.token_urlsafe(12)
         db.add(models.User(username=ADMIN_USERNAME, password_hash=hash_password(password)))
         db.commit()
@@ -32,6 +33,10 @@ with SessionLocal() as db:
                 f"[auth] 已创建默认用户「{ADMIN_USERNAME}」，临时密码：{password}\n"
                 "       请通过 ADMIN_PASSWORD 环境变量设置正式密码。"
             )
+    elif ADMIN_PASSWORD:
+        # 以 .env 的 ADMIN_PASSWORD 为唯一真相来源，启动时同步密码
+        user.password_hash = hash_password(ADMIN_PASSWORD)
+        db.commit()
 
 app = FastAPI(title="Poem Manager API")
 
