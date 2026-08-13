@@ -163,7 +163,7 @@ export default function PoemList({ refreshKey, onSelect, onNew }) {
       {/* FAB */}
       <button
         onClick={onNew}
-        className="fixed bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-teal-600 text-3xl text-white shadow-lg transition active:scale-95"
+        className="fixed bottom-20 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-teal-600 text-3xl text-white shadow-lg transition active:scale-95"
         aria-label="新建诗词"
       >
         +

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { poemsApi } from '../api.js'
+import TemplatePicker from './TemplatePicker.jsx'
+import ToneLine from './ToneLine.jsx'
 
 export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
   const [form, setForm] = useState({
@@ -14,6 +16,8 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
   const [categories, setCategories] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [showPicker, setShowPicker] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
 
   useEffect(() => {
     poemsApi.categories().then(setCategories).catch(() => {})
@@ -33,6 +37,15 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
   }, [id])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  const pickTemplate = (tpl) => {
+    setSelectedTemplate(tpl)
+    setShowPicker(false)
+    // 若未填类型，自动带入词牌/诗体名
+    if (!form.category.trim()) {
+      set('category', tpl.name)
+    }
+  }
 
   const save = async () => {
     setSaving(true)
@@ -142,15 +155,51 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
           />
         </Field>
 
-        <Field label="正文">
-          <textarea
-            value={form.content}
-            onChange={(e) => set('content', e.target.value)}
-            rows={10}
-            placeholder="在此输入诗词正文，每句一行…"
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm leading-7 focus:border-teal-500 focus:outline-none"
-          />
-        </Field>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-slate-500">正文</span>
+          <button
+            onClick={() => setShowPicker(true)}
+            className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-700"
+          >
+            📖 选格律模板
+          </button>
+        </div>
+        <textarea
+          value={form.content}
+          onChange={(e) => set('content', e.target.value)}
+          rows={10}
+          placeholder="在此输入诗词正文，每句一行…"
+          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm leading-7 focus:border-teal-500 focus:outline-none"
+        />
+
+        {/* 所选格律参考 */}
+        {selectedTemplate && (
+          <div className="rounded-xl border border-teal-100 bg-teal-50 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-medium text-teal-800">
+                {selectedTemplate.name}（{selectedTemplate.kind === 'ci' ? '词' : '诗'} ·{' '}
+                {selectedTemplate.total_chars} 字）
+              </span>
+              <button
+                onClick={() => setSelectedTemplate(null)}
+                className="text-xs text-slate-400"
+              >
+                移除
+              </button>
+            </div>
+            <ol className="space-y-1">
+              {selectedTemplate.pattern.map((line, i) => (
+                <li key={i} className="flex items-baseline gap-2">
+                  <span className="w-5 shrink-0 text-right text-xs text-slate-400">{i + 1}</span>
+                  <ToneLine text={line} />
+                </li>
+              ))}
+            </ol>
+            {selectedTemplate.rhyme && (
+              <p className="mt-2 text-xs text-slate-500">{selectedTemplate.rhyme}</p>
+            )}
+          </div>
+        )}
 
         <label className="flex items-center gap-2 text-sm text-slate-600">
           <input
@@ -161,6 +210,10 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
           加入收藏
         </label>
       </div>
+
+      {showPicker && (
+        <TemplatePicker onSelect={pickTemplate} onClose={() => setShowPicker(false)} />
+      )}
     </div>
   )
 }

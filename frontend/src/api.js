@@ -42,3 +42,26 @@ export const poemsApi = {
     return request('/poems/categories')
   },
 }
+
+export const templatesApi = {
+  list(params = {}) {
+    const qs = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v)
+    })
+    const s = qs.toString()
+    return request(`/templates${s ? '?' + s : ''}`)
+  },
+  get(id) {
+    return request(`/templates/${id}`)
+  },
+  create(data) {
+    return request('/templates', { method: 'POST', body: JSON.stringify(data) })
+  },
+  update(id, data) {
+    return request(`/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+  },
+  remove(id) {
+    return request(`/templates/${id}`, { method: 'DELETE' })
+  },
+}

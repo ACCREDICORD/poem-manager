@@ -41,3 +41,38 @@ class PoemOut(PoemBase):
     agent_report: dict | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class TemplateBase(BaseModel):
+    name: str
+    kind: str = "ci"
+    aliases: list[str] = []
+    total_chars: int = 0
+    line_count: int = 0
+    pattern: list[str] = []
+    rhyme: str = ""
+    example: str = ""
+    editable: bool = True
+
+
+class TemplateCreate(TemplateBase):
+    pass
+
+
+class TemplateUpdate(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    aliases: list[str] | None = None
+    total_chars: int | None = None
+    line_count: int | None = None
+    pattern: list[str] | None = None
+    rhyme: str | None = None
+    example: str | None = None
+    editable: bool | None = None
+
+
+class TemplateOut(TemplateBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
