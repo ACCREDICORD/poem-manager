@@ -135,3 +135,12 @@ export const agentApi = {
     })
   },
 }
+
+export const importApi = {
+  analyze(text) {
+    return request('/import/analyze', { method: 'POST', body: JSON.stringify({ text }) })
+  },
+  save(items) {
+    return request('/import/save', { method: 'POST', body: JSON.stringify({ items }) })
+  },
+}

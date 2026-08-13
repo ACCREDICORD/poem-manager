@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { poemsApi } from '../api.js'
+import ImportPanel from './ImportPanel.jsx'
 
 const SORT_OPTIONS = [
   { value: 'created_at', label: '最新创建' },
@@ -20,6 +21,8 @@ export default function PoemList({ refreshKey, onSelect, onNew }) {
   const [sortOrder, setSortOrder] = useState('desc')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [showImport, setShowImport] = useState(false)
+  const [importTick, setImportTick] = useState(0)
 
   useEffect(() => {
     poemsApi.categories().then(setCategories).catch(() => {})
@@ -52,13 +55,18 @@ export default function PoemList({ refreshKey, onSelect, onNew }) {
     return () => {
       active = false
     }
-  }, [refreshKey, q, category, sortBy, sortOrder, dateFrom, dateTo])
+  }, [refreshKey, importTick, q, category, sortBy, sortOrder, dateFrom, dateTo])
 
   return (
     <div className="mx-auto max-w-2xl px-4 pb-24 pt-4">
       <header className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-teal-800">诗词管理</h1>
-        <span className="text-sm text-slate-400">共 {poems.length} 首</span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowImport(true)} className="text-sm font-medium text-teal-600">
+            导入
+          </button>
+          <span className="text-sm text-slate-400">共 {poems.length} 首</span>
+        </div>
       </header>
 
       {/* Search */}
@@ -168,6 +176,13 @@ export default function PoemList({ refreshKey, onSelect, onNew }) {
       >
         +
       </button>
+
+      {showImport && (
+        <ImportPanel
+          onClose={() => setShowImport(false)}
+          onImported={() => setImportTick((t) => t + 1)}
+        />
+      )}
     </div>
   )
 }
