@@ -38,6 +38,9 @@ export const poemsApi = {
     const qs = favorite === undefined ? '' : `?favorite=${favorite}`
     return request(`/poems/${id}/favorite${qs}`, { method: 'PATCH' })
   },
+  rate(id, opts = {}) {
+    return request(`/poems/${id}/rate`, { method: 'POST', body: JSON.stringify(opts) })
+  },
   categories() {
     return request('/poems/categories')
   },

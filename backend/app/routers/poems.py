@@ -3,12 +3,14 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
-from ..config import UPLOAD_DIR
-from ..database import get_db
+from ..config import DEEPSEEK_API_KEY, MODELS, UPLOAD_DIR
+from ..database import SessionLocal, get_db
+from ..scoring import score_poem
 
 router = APIRouter()
 
@@ -202,3 +204,40 @@ def delete_image(image_id: int, db: Session = Depends(get_db)):
         pass
     db.delete(img)
     db.commit()
+
+
+class RateRequest(BaseModel):
+    model: str = "pro"  # flash | pro
+    reasoning: str = "high"  # none | low | high | max
+
+
+@router.post("/{poem_id}/rate", response_model=schemas.PoemOut)
+async def rate_poem(poem_id: int, req: RateRequest):
+    if not DEEPSEEK_API_KEY:
+        raise HTTPException(status_code=400, detail="未配置 DeepSeek API key")
+
+    db = SessionLocal()
+    try:
+        poem = db.get(models.Poem, poem_id)
+        if poem is None:
+            raise HTTPException(status_code=404, detail="Poem not found")
+        template = None
+        if poem.category:
+            template = (
+                db.query(models.Template)
+                .filter(models.Template.name == poem.category)
+                .first()
+            )
+        model_name = MODELS.get(req.model, MODELS["pro"])
+        results, report = await score_poem(
+            poem, template=template, model=model_name, reasoning=req.reasoning
+        )
+        poem.agent_scores = results
+        poem.agent_report = report
+        poem.agent_score = int(report.get("total", 0))
+        recompute_comprehensive(poem)
+        db.commit()
+        db.refresh(poem)
+        return poem
+    finally:
+        db.close()
