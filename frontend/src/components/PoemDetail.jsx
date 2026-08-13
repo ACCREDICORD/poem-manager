@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { poemsApi } from '../api.js'
+import ChatPanel from './ChatPanel.jsx'
 
 export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
   const [poem, setPoem] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [showChat, setShowChat] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -43,6 +45,12 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
           ← 返回
         </button>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowChat(true)}
+            className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm text-teal-700"
+          >
+            AI 辅助
+          </button>
           <button
             onClick={() => onEdit(poem.id)}
             className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600"
@@ -147,6 +155,8 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
           </div>
         )}
       </div>
+
+      {showChat && <ChatPanel poemId={poem.id} onClose={() => setShowChat(false)} />}
     </div>
   )
 }

@@ -79,3 +79,44 @@ export const imagesApi = {
     return request(`/poems/images/${imageId}`, { method: 'DELETE' })
   },
 }
+
+export const chatApi = {
+  async stream(payload, onDelta) {
+    const res = await fetch(`${BASE}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok || !res.body) {
+      const err = await res.json().catch(() => ({ detail: 'AI 请求失败' }))
+      throw new Error(err.detail || 'AI 请求失败')
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const part = buf.slice(0, idx).trim()
+        buf = buf.slice(idx + 2)
+        if (!part.startsWith('data:')) continue
+        const data = part.slice(5).trim()
+        if (data === '[DONE]') return
+        let obj
+        try {
+          obj = JSON.parse(data)
+        } catch {
+          continue
+        }
+        if (obj.error) throw new Error(obj.error)
+        if (obj.delta) onDelta(obj.delta)
+      }
+    }
+  },
+  history(sessionId) {
+    return request(`/chat/history?session_id=${encodeURIComponent(sessionId)}`)
+  },
+}
