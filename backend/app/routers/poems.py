@@ -1,10 +1,13 @@
+import uuid
 from datetime import date
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import or_
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..config import UPLOAD_DIR
 from ..database import get_db
 
 router = APIRouter()
@@ -137,4 +140,65 @@ def delete_poem(poem_id: int, db: Session = Depends(get_db)):
     if poem is None:
         raise HTTPException(status_code=404, detail="Poem not found")
     db.delete(poem)
+    db.commit()
+
+
+@router.post("/{poem_id}/images", response_model=schemas.ImageOut, status_code=201)
+async def upload_image(
+    poem_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    poem = db.get(models.Poem, poem_id)
+    if poem is None:
+        raise HTTPException(status_code=404, detail="Poem not found")
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(status_code=400, detail="只支持图片文件")
+
+    ext = Path(file.filename or "image").suffix.lower() or ".jpg"
+    if ext not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+        ext = ".jpg"
+    name = f"{uuid.uuid4().hex}{ext}"
+    rel_dir = f"poems/{poem_id}"
+    abs_dir = UPLOAD_DIR / rel_dir
+    abs_dir.mkdir(parents=True, exist_ok=True)
+    rel_path = f"{rel_dir}/{name}"
+    abs_path = UPLOAD_DIR / rel_path
+
+    size = 0
+    with open(abs_path, "wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            out.write(chunk)
+            size += len(chunk)
+
+    max_order = (
+        db.query(func.max(models.Image.sort_order))
+        .filter(models.Image.poem_id == poem_id)
+        .scalar()
+        or 0
+    )
+    img = models.Image(
+        poem_id=poem_id,
+        filename=file.filename or name,
+        stored_path=rel_path,
+        mime=file.content_type or "image/*",
+        size=size,
+        sort_order=max_order + 1,
+    )
+    db.add(img)
+    db.commit()
+    db.refresh(img)
+    return img
+
+
+@router.delete("/images/{image_id}", status_code=204)
+def delete_image(image_id: int, db: Session = Depends(get_db)):
+    img = db.get(models.Image, image_id)
+    if img is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+    try:
+        (UPLOAD_DIR / img.stored_path).unlink(missing_ok=True)
+    except OSError:
+        pass
+    db.delete(img)
     db.commit()

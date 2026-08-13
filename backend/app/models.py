@@ -44,7 +44,7 @@ class Poem(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     images: Mapped[list["Image"]] = relationship(
-        back_populates="poem", cascade="all, delete-orphan"
+        back_populates="poem", cascade="all, delete-orphan", lazy="selectin"
     )
 
 
@@ -77,6 +77,10 @@ class Image(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     poem: Mapped["Poem"] = relationship(back_populates="images")
+
+    @property
+    def url(self) -> str:
+        return f"/media/{self.stored_path}" if self.stored_path else ""
 
 
 class Message(Base):

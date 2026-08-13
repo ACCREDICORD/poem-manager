@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from . import models  # noqa: F401  (register models before create_all)
+from .config import UPLOAD_DIR
 from .database import Base, SessionLocal, engine
 from .routers import poems, templates
 from .seed_data import seed_templates
@@ -24,6 +26,10 @@ app.add_middleware(
 
 app.include_router(poems.router, prefix="/api/poems", tags=["poems"])
 app.include_router(templates.router, prefix="/api/templates", tags=["templates"])
+
+# Serve uploaded poem images
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=str(UPLOAD_DIR)), name="media")
 
 
 @app.get("/api/health")

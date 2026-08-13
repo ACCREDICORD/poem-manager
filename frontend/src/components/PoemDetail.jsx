@@ -114,7 +114,7 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
           <p className="text-slate-400">（无正文）</p>
         )}
 
-        {/* Annotations (M3 will add editing) */}
+        {/* Annotations */}
         {poem.annotations?.length > 0 && (
           <div className="mt-5 border-t border-slate-100 pt-4">
             <h2 className="mb-2 text-sm font-semibold text-slate-500">批注</h2>
@@ -126,6 +126,24 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
                 {a.text}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Images */}
+        {poem.images?.length > 0 && (
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <h2 className="mb-2 text-sm font-semibold text-slate-500">图片</h2>
+            <div className="grid grid-cols-3 gap-2">
+              {poem.images.map((img) => (
+                <a key={img.id} href={img.url} target="_blank" rel="noreferrer">
+                  <img
+                    src={img.url}
+                    alt={img.filename}
+                    className="h-24 w-full rounded-lg object-cover"
+                  />
+                </a>
+              ))}
+            </div>
           </div>
         )}
       </div>

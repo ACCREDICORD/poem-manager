@@ -65,3 +65,17 @@ export const templatesApi = {
     return request(`/templates/${id}`, { method: 'DELETE' })
   },
 }
+
+export const imagesApi = {
+  upload(poemId, file) {
+    const form = new FormData()
+    form.append('file', file)
+    return fetch(`${BASE}/poems/${poemId}/images`, { method: 'POST', body: form }).then((res) => {
+      if (!res.ok) throw new Error('图片上传失败')
+      return res.json()
+    })
+  },
+  remove(imageId) {
+    return request(`/poems/images/${imageId}`, { method: 'DELETE' })
+  },
+}

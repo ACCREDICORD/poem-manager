@@ -31,6 +31,17 @@ class PoemUpdate(BaseModel):
     source: str | None = None
 
 
+class ImageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    filename: str
+    url: str
+    mime: str = ""
+    size: int = 0
+    sort_order: int = 0
+
+
 class PoemOut(PoemBase):
     model_config = ConfigDict(from_attributes=True)
 
@@ -39,6 +50,7 @@ class PoemOut(PoemBase):
     comprehensive_score: int | None = None
     agent_scores: list[dict] = []
     agent_report: dict | None = None
+    images: list[ImageOut] = []
     created_at: datetime
     updated_at: datetime
 

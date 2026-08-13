@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { poemsApi } from '../api.js'
+import { imagesApi, poemsApi } from '../api.js'
 import TemplatePicker from './TemplatePicker.jsx'
 import ToneLine from './ToneLine.jsx'
 
@@ -12,9 +12,12 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
     created_date: '',
     user_score: '',
     is_favorite: false,
+    annotations: [],
   })
+  const [images, setImages] = useState([])
   const [categories, setCategories] = useState([])
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const [showPicker, setShowPicker] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState(null)
@@ -31,7 +34,12 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
           created_date: p.created_date || '',
           user_score: p.user_score ?? '',
           is_favorite: p.is_favorite || false,
+          annotations: (p.annotations || []).map((a) => ({
+            line: a.line ?? '',
+            text: a.text || '',
+          })),
         })
+        setImages(p.images || [])
       })
     }
   }, [id])
@@ -41,10 +49,44 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
   const pickTemplate = (tpl) => {
     setSelectedTemplate(tpl)
     setShowPicker(false)
-    // 若未填类型，自动带入词牌/诗体名
-    if (!form.category.trim()) {
-      set('category', tpl.name)
+    if (!form.category.trim()) set('category', tpl.name)
+  }
+
+  // ---- annotations ----
+  const addAnnotation = () =>
+    set('annotations', [...form.annotations, { line: '', text: '' }])
+  const updateAnnotation = (i, key, val) =>
+    set(
+      'annotations',
+      form.annotations.map((a, idx) => (idx === i ? { ...a, [key]: val } : a)),
+    )
+  const removeAnnotation = (i) =>
+    set(
+      'annotations',
+      form.annotations.filter((_, idx) => idx !== i),
+    )
+
+  // ---- images ----
+  const handleUpload = async (e) => {
+    const files = e.target.files
+    if (!files || files.length === 0 || !id) return
+    setUploading(true)
+    setError('')
+    try {
+      for (const f of files) {
+        const img = await imagesApi.upload(id, f)
+        setImages((prev) => [...prev, img])
+      }
+    } catch (err) {
+      setError(err.message || '图片上传失败')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
     }
+  }
+  const removeImage = async (imageId) => {
+    await imagesApi.remove(imageId)
+    setImages((prev) => prev.filter((im) => im.id !== imageId))
   }
 
   const save = async () => {
@@ -58,13 +100,16 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
       created_date: form.created_date || null,
       user_score: form.user_score === '' ? null : Number(form.user_score),
       is_favorite: form.is_favorite,
+      annotations: form.annotations
+        .map((a) => ({
+          line: a.line === '' || a.line == null ? null : Number(a.line),
+          text: a.text.trim(),
+        }))
+        .filter((a) => a.text),
     }
     try {
-      if (id) {
-        await poemsApi.update(id, payload)
-      } else {
-        await poemsApi.create(payload)
-      }
+      if (id) await poemsApi.update(id, payload)
+      else await poemsApi.create(payload)
       refresh()
       onSaved()
     } catch (e) {
@@ -75,11 +120,13 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
   }
 
   const updateTags = (raw) => {
-    const tags = raw
-      .split(/[,，]/)
-      .map((t) => t.trim())
-      .filter(Boolean)
-    set('tags', tags)
+    set(
+      'tags',
+      raw
+        .split(/[,，]/)
+        .map((t) => t.trim())
+        .filter(Boolean),
+    )
   }
 
   return (
@@ -199,6 +246,86 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
               <p className="mt-2 text-xs text-slate-500">{selectedTemplate.rhyme}</p>
             )}
           </div>
+        )}
+
+        {/* 批注 */}
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-slate-500">批注</span>
+            <button
+              onClick={addAnnotation}
+              className="text-xs font-medium text-teal-700"
+            >
+              + 加一条
+            </button>
+          </div>
+          {form.annotations.length === 0 ? (
+            <p className="text-xs text-slate-400">暂无批注（可针对某一句，或写整首总批注）</p>
+          ) : (
+            form.annotations.map((a, i) => (
+              <div key={i} className="mb-2 flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  value={a.line}
+                  onChange={(e) => updateAnnotation(i, 'line', e.target.value)}
+                  placeholder="句号"
+                  className="w-16 shrink-0 rounded-lg border border-slate-200 px-2 py-2 text-xs focus:border-teal-500 focus:outline-none"
+                />
+                <input
+                  value={a.text}
+                  onChange={(e) => updateAnnotation(i, 'text', e.target.value)}
+                  placeholder="批注内容"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+                />
+                <button
+                  onClick={() => removeAnnotation(i)}
+                  className="shrink-0 text-slate-400 active:text-red-500"
+                  aria-label="删除批注"
+                >
+                  ✕
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* 图片（需先保存后才能上传） */}
+        {id ? (
+          <div>
+            <span className="mb-2 block text-xs font-medium text-slate-500">图片</span>
+            {images.length > 0 && (
+              <div className="mb-2 grid grid-cols-3 gap-2">
+                {images.map((img) => (
+                  <div key={img.id} className="relative">
+                    <img
+                      src={img.url}
+                      alt={img.filename}
+                      className="h-20 w-full rounded-lg object-cover"
+                    />
+                    <button
+                      onClick={() => removeImage(img.id)}
+                      className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-800 text-xs text-white"
+                      aria-label="删除图片"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleUpload}
+              disabled={uploading}
+              className="block w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-teal-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-teal-700"
+            />
+            {uploading && <span className="text-xs text-slate-400">上传中…</span>}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400">保存后可上传图片。</p>
         )}
 
         <label className="flex items-center gap-2 text-sm text-slate-600">
