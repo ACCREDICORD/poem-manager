@@ -1,9 +1,15 @@
+import mimetypes
 import secrets
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+# 确保前端资源以正确 MIME 返回（Windows 上 Python 可能把 .js 误判为 text/plain）
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("application/javascript", ".mjs")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 from . import models  # noqa: F401  (register models before create_all)
 from .auth import auth_middleware, hash_password
