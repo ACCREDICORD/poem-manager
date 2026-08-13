@@ -1,0 +1,140 @@
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from .. import models, schemas
+from ..database import get_db
+
+router = APIRouter()
+
+_SORTABLE = {
+    "created_at",
+    "updated_at",
+    "created_date",
+    "title",
+    "user_score",
+    "agent_score",
+    "comprehensive_score",
+}
+_SCORE_FIELDS = {"user_score", "agent_score", "comprehensive_score"}
+
+
+def recompute_comprehensive(poem: models.Poem) -> None:
+    """综合评分 = user_score 与 agent_score 各占 50% 加权平均；一方缺失取另一方。"""
+    u, a = poem.user_score, poem.agent_score
+    if u is not None and a is not None:
+        poem.comprehensive_score = round(0.5 * u + 0.5 * a)
+    elif u is not None:
+        poem.comprehensive_score = u
+    elif a is not None:
+        poem.comprehensive_score = a
+    else:
+        poem.comprehensive_score = None
+
+
+@router.get("", response_model=list[schemas.PoemOut])
+def list_poems(
+    category: str | None = None,
+    favorite: bool | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    q: str | None = None,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+    score_field: str | None = None,
+    score_min: int | None = None,
+    score_max: int | None = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(models.Poem)
+
+    if category:
+        query = query.filter(models.Poem.category == category)
+    if favorite is not None:
+        query = query.filter(models.Poem.is_favorite == favorite)
+    if date_from:
+        query = query.filter(models.Poem.created_date >= date_from)
+    if date_to:
+        query = query.filter(models.Poem.created_date <= date_to)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            or_(models.Poem.title.ilike(like), models.Poem.content.ilike(like))
+        )
+    if score_field in _SCORE_FIELDS:
+        col = getattr(models.Poem, score_field)
+        if score_min is not None:
+            query = query.filter(col >= score_min)
+        if score_max is not None:
+            query = query.filter(col <= score_max)
+
+    sort_col = getattr(models.Poem, sort_by, None)
+    if sort_col is None or sort_by not in _SORTABLE:
+        sort_col = models.Poem.created_at
+    if sort_order == "asc":
+        query = query.order_by(sort_col.asc(), models.Poem.id.desc())
+    else:
+        query = query.order_by(sort_col.desc(), models.Poem.id.desc())
+
+    return query.all()
+
+
+@router.get("/categories", response_model=list[str])
+def list_categories(db: Session = Depends(get_db)):
+    rows = db.query(models.Poem.category).distinct().all()
+    return sorted({r[0] for r in rows if r[0]})
+
+
+@router.post("", response_model=schemas.PoemOut, status_code=201)
+def create_poem(payload: schemas.PoemCreate, db: Session = Depends(get_db)):
+    poem = models.Poem(**payload.model_dump())
+    recompute_comprehensive(poem)
+    db.add(poem)
+    db.commit()
+    db.refresh(poem)
+    return poem
+
+
+@router.get("/{poem_id}", response_model=schemas.PoemOut)
+def get_poem(poem_id: int, db: Session = Depends(get_db)):
+    poem = db.get(models.Poem, poem_id)
+    if poem is None:
+        raise HTTPException(status_code=404, detail="Poem not found")
+    return poem
+
+
+@router.put("/{poem_id}", response_model=schemas.PoemOut)
+def update_poem(poem_id: int, payload: schemas.PoemUpdate, db: Session = Depends(get_db)):
+    poem = db.get(models.Poem, poem_id)
+    if poem is None:
+        raise HTTPException(status_code=404, detail="Poem not found")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(poem, key, value)
+    recompute_comprehensive(poem)
+    db.commit()
+    db.refresh(poem)
+    return poem
+
+
+@router.patch("/{poem_id}/favorite", response_model=schemas.PoemOut)
+def toggle_favorite(
+    poem_id: int, favorite: bool | None = None, db: Session = Depends(get_db)
+):
+    poem = db.get(models.Poem, poem_id)
+    if poem is None:
+        raise HTTPException(status_code=404, detail="Poem not found")
+    poem.is_favorite = (not poem.is_favorite) if favorite is None else favorite
+    db.commit()
+    db.refresh(poem)
+    return poem
+
+
+@router.delete("/{poem_id}", status_code=204)
+def delete_poem(poem_id: int, db: Session = Depends(get_db)):
+    poem = db.get(models.Poem, poem_id)
+    if poem is None:
+        raise HTTPException(status_code=404, detail="Poem not found")
+    db.delete(poem)
+    db.commit()
