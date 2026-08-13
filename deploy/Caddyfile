@@ -1,0 +1,6 @@
+# Caddy 反向代理（自动申请 HTTPS/Let's Encrypt）
+# 把 your-domain.com 换成你的域名，并确保域名已解析到服务器 IP
+
+your-domain.com {
+    reverse_proxy 127.0.0.1:8000
+}

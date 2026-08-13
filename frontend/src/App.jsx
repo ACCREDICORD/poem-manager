@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getToken } from './api.js'
+import Login from './components/Login.jsx'
 import PoemList from './components/PoemList.jsx'
 import PoemDetail from './components/PoemDetail.jsx'
 import PoemEditor from './components/PoemEditor.jsx'
@@ -13,6 +15,13 @@ export default function App() {
   const [tplView, setTplView] = useState('list')
   const [tplId, setTplId] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [authed, setAuthed] = useState(!!getToken())
+
+  useEffect(() => {
+    const onUnauth = () => setAuthed(false)
+    window.addEventListener('auth:unauthorized', onUnauth)
+    return () => window.removeEventListener('auth:unauthorized', onUnauth)
+  }, [])
 
   const refresh = () => setRefreshKey((k) => k + 1)
 
@@ -84,6 +93,10 @@ export default function App() {
     )
   } else {
     content = <PoemList refreshKey={refreshKey} onSelect={openDetail} onNew={openNew} />
+  }
+
+  if (!authed) {
+    return <Login onSuccess={() => setAuthed(true)} />
   }
 
   return (

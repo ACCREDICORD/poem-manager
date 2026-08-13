@@ -29,6 +29,8 @@ uv run uvicorn app.main:app --reload --port 8000
 
 接口文档：http://127.0.0.1:8000/docs
 
+> 首次启动会创建单用户账号（默认 `admin`）。若未设置 `ADMIN_PASSWORD`，控制台会打印一个临时密码；生产环境请在 `.env` 里设置正式密码。详见 [DEPLOY.md](DEPLOY.md)。
+
 ### 前端（构建完成后）
 
 ```bash
