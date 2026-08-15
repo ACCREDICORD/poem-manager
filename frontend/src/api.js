@@ -74,6 +74,9 @@ export const poemsApi = {
   rate(id, opts = {}) {
     return request(`/poems/${id}/rate`, { method: 'POST', body: JSON.stringify(opts) })
   },
+  rateStatus(id) {
+    return request(`/poems/${id}/rate/status`)
+  },
   categories() {
     return request('/poems/categories')
   },

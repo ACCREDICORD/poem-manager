@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import date
 from pathlib import Path
@@ -211,16 +212,18 @@ class RateRequest(BaseModel):
     reasoning: str = "high"  # none | low | high | max
 
 
-@router.post("/{poem_id}/rate", response_model=schemas.PoemOut)
-async def rate_poem(poem_id: int, req: RateRequest):
-    if not DEEPSEEK_API_KEY:
-        raise HTTPException(status_code=400, detail="未配置 DeepSeek API key")
+# 评分状态：poem_id -> running | done | error（内存态，重启后重置）
+_rating_status: dict[int, str] = {}
 
+
+async def _run_scoring(poem_id: int, model_name: str, reasoning: str) -> None:
+    """后台执行评分，结束后标记状态。"""
     db = SessionLocal()
     try:
         poem = db.get(models.Poem, poem_id)
         if poem is None:
-            raise HTTPException(status_code=404, detail="Poem not found")
+            _rating_status[poem_id] = "error"
+            return
         template = None
         if poem.category:
             template = (
@@ -228,16 +231,42 @@ async def rate_poem(poem_id: int, req: RateRequest):
                 .filter(models.Template.name == poem.category)
                 .first()
             )
-        model_name = MODELS.get(req.model, MODELS["pro"])
         results, report = await score_poem(
-            poem, template=template, model=model_name, reasoning=req.reasoning
+            poem, template=template, model=model_name, reasoning=reasoning
         )
         poem.agent_scores = results
         poem.agent_report = report
         poem.agent_score = int(report.get("total", 0))
         recompute_comprehensive(poem)
         db.commit()
-        db.refresh(poem)
-        return poem
+        _rating_status[poem_id] = "done"
+    except Exception:
+        _rating_status[poem_id] = "error"
     finally:
         db.close()
+
+
+@router.post("/{poem_id}/rate")
+async def rate_poem(poem_id: int, req: RateRequest):
+    if not DEEPSEEK_API_KEY:
+        raise HTTPException(status_code=400, detail="未配置 DeepSeek API key")
+
+    db = SessionLocal()
+    try:
+        if db.get(models.Poem, poem_id) is None:
+            raise HTTPException(status_code=404, detail="Poem not found")
+    finally:
+        db.close()
+
+    if _rating_status.get(poem_id) == "running":
+        return {"status": "running"}
+
+    model_name = MODELS.get(req.model, MODELS["pro"])
+    _rating_status[poem_id] = "running"
+    asyncio.create_task(_run_scoring(poem_id, model_name, req.reasoning))
+    return {"status": "running"}
+
+
+@router.get("/{poem_id}/rate/status")
+def rate_status(poem_id: int):
+    return {"status": _rating_status.get(poem_id, "none")}

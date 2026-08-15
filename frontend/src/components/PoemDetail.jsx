@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { poemsApi } from '../api.js'
 import ChatPanel from './ChatPanel.jsx'
 
@@ -7,6 +7,38 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
   const [loading, setLoading] = useState(true)
   const [showChat, setShowChat] = useState(false)
   const [rating, setRating] = useState(false)
+  const pollRef = useRef(null)
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearTimeout(pollRef.current)
+      pollRef.current = null
+    }
+  }
+
+  const pollUntilDone = (poemId) => {
+    stopPolling()
+    const check = async () => {
+      try {
+        const res = await poemsApi.rateStatus(poemId)
+        if (res.status === 'done') {
+          setRating(false)
+          const updated = await poemsApi.get(poemId)
+          setPoem(updated)
+          return
+        }
+        if (res.status === 'error') {
+          setRating(false)
+          alert('评分失败，请重试')
+          return
+        }
+        pollRef.current = setTimeout(check, 3000)
+      } catch (e) {
+        setRating(false)
+      }
+    }
+    check()
+  }
 
   useEffect(() => {
     let active = true
@@ -19,8 +51,19 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
       .finally(() => {
         if (active) setLoading(false)
       })
+    // 切走再回来时，若正在评分则继续轮询
+    poemsApi
+      .rateStatus(id)
+      .then((res) => {
+        if (res.status === 'running') {
+          setRating(true)
+          pollUntilDone(id)
+        }
+      })
+      .catch(() => {})
     return () => {
       active = false
+      stopPolling()
     }
   }, [id])
 
@@ -42,12 +85,11 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
   const rate = async () => {
     setRating(true)
     try {
-      const updated = await poemsApi.rate(poem.id)
-      setPoem(updated)
+      await poemsApi.rate(poem.id)
+      pollUntilDone(poem.id)
     } catch (e) {
-      alert(e.message || '评分失败')
-    } finally {
       setRating(false)
+      alert(e.message || '评分失败')
     }
   }
 
