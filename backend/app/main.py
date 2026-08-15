@@ -17,6 +17,7 @@ from .auth import auth_middleware, hash_password
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, UPLOAD_DIR
 from .database import Base, SessionLocal, engine
 from .routers import agent, auth, chat, imports, poems, references, templates
+from .reference_seed import store_reference_poems
 from .seed_data import seed_templates
 
 Base.metadata.create_all(bind=engine)
@@ -34,6 +35,7 @@ if "poems" in _insp.get_table_names():
 # Seed preset templates + ensure a single user exists
 with SessionLocal() as db:
     seed_templates(db)
+    store_reference_poems(db)
     user = db.query(models.User).filter(models.User.username == ADMIN_USERNAME).first()
     if user is None:
         password = ADMIN_PASSWORD or secrets.token_urlsafe(12)

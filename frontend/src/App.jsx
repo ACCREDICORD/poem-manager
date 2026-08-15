@@ -7,6 +7,8 @@ import PoemEditor from './components/PoemEditor.jsx'
 import TemplateList from './components/TemplateList.jsx'
 import TemplateDetail from './components/TemplateDetail.jsx'
 import TemplateEditor from './components/TemplateEditor.jsx'
+import ReferenceList from './components/ReferenceList.jsx'
+import ReferenceEditor from './components/ReferenceEditor.jsx'
 
 export default function App() {
   const [tab, setTab] = useState('poems') // poems | templates
@@ -14,6 +16,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState(null)
   const [tplView, setTplView] = useState('list')
   const [tplId, setTplId] = useState(null)
+  const [refView, setRefView] = useState('list')
+  const [refId, setRefId] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [authed, setAuthed] = useState(!!getToken())
 
@@ -43,7 +47,23 @@ export default function App() {
   }
 
   let content
-  if (tab === 'templates') {
+  if (tab === 'references') {
+    content =
+      refView === 'edit' ? (
+        <ReferenceEditor
+          id={refId}
+          onSaved={() => setRefView('list')}
+          onCancel={() => setRefView('list')}
+        />
+      ) : (
+        <ReferenceList
+          onSelect={(id) => {
+            setRefId(id)
+            setRefView('edit')
+          }}
+        />
+      )
+  } else if (tab === 'templates') {
     if (tplView === 'detail') {
       content = (
         <TemplateDetail
@@ -108,6 +128,9 @@ export default function App() {
         </TabBtn>
         <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')}>
           格律
+        </TabBtn>
+        <TabBtn active={tab === 'references'} onClick={() => setTab('references')}>
+          参考
         </TabBtn>
       </nav>
     </div>

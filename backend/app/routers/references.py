@@ -21,6 +21,13 @@ class SeedRequest(BaseModel):
     reasoning: str = "high"
 
 
+class ReferenceUpdate(BaseModel):
+    title: str | None = None
+    author: str | None = None
+    kind: str | None = None
+    content: str | None = None
+
+
 async def _run_seed(model_name: str, reasoning: str) -> None:
     try:
         db = SessionLocal()
@@ -86,6 +93,18 @@ def add_from_poem(poem_id: int, db: Session = Depends(get_db)):
         article=poem.agent_report.get("article", ""),
     )
     db.add(ref)
+    db.commit()
+    db.refresh(ref)
+    return ref
+
+
+@router.put("/{ref_id}", response_model=schemas.ReferenceOut)
+def update_reference(ref_id: int, payload: ReferenceUpdate, db: Session = Depends(get_db)):
+    ref = db.get(models.ReferenceArticle, ref_id)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Reference not found")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(ref, key, value)
     db.commit()
     db.refresh(ref)
     return ref

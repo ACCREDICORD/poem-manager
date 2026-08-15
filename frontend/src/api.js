@@ -200,4 +200,10 @@ export const referencesApi = {
   seedStatus() {
     return request('/references/seed/status')
   },
+  update(id, data) {
+    return request(`/references/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+  },
+  remove(id) {
+    return request(`/references/${id}`, { method: 'DELETE' })
+  },
 }
