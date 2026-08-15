@@ -191,6 +191,12 @@ export const referencesApi = {
   list() {
     return request('/references')
   },
+  get(id) {
+    return request(`/references/${id}`)
+  },
+  create(data) {
+    return request('/references', { method: 'POST', body: JSON.stringify(data) })
+  },
   addFromPoem(poemId) {
     return request(`/references/from-poem/${poemId}`, { method: 'POST' })
   },
@@ -199,6 +205,12 @@ export const referencesApi = {
   },
   seedStatus() {
     return request('/references/seed/status')
+  },
+  init(id, opts = {}) {
+    return request(`/references/${id}/init`, { method: 'POST', body: JSON.stringify(opts) })
+  },
+  initStatus(id) {
+    return request(`/references/${id}/init/status`)
   },
   update(id, data) {
     return request(`/references/${id}`, { method: 'PUT', body: JSON.stringify(data) })

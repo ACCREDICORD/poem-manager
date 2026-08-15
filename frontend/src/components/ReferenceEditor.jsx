@@ -7,12 +7,11 @@ export default function ReferenceEditor({ id, onSaved, onCancel }) {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    referencesApi.list().then((refs) => {
-      const r = refs.find((x) => x.id === id)
-      if (r) {
+    if (id) {
+      referencesApi.get(id).then((r) => {
         setForm({ title: r.title, author: r.author, kind: r.kind, content: r.content })
-      }
-    })
+      })
+    }
   }, [id])
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
@@ -20,13 +19,15 @@ export default function ReferenceEditor({ id, onSaved, onCancel }) {
   const save = async () => {
     setSaving(true)
     setError('')
+    const payload = {
+      title: form.title.trim(),
+      author: form.author.trim(),
+      kind: form.kind,
+      content: form.content,
+    }
     try {
-      await referencesApi.update(id, {
-        title: form.title.trim(),
-        author: form.author.trim(),
-        kind: form.kind,
-        content: form.content,
-      })
+      if (id) await referencesApi.update(id, payload)
+      else await referencesApi.create(payload)
       onSaved()
     } catch (e) {
       setError(e.message || '保存失败')
@@ -41,7 +42,9 @@ export default function ReferenceEditor({ id, onSaved, onCancel }) {
         <button onClick={onCancel} className="text-slate-500 active:text-slate-700">
           ← 返回
         </button>
-        <h1 className="text-lg font-bold text-slate-800">编辑参考作品</h1>
+        <h1 className="text-lg font-bold text-slate-800">
+          {id ? '编辑参考作品' : '新建参考作品'}
+        </h1>
         <button
           onClick={save}
           disabled={saving}

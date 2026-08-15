@@ -61,6 +61,10 @@ export default function App() {
             setRefId(id)
             setRefView('edit')
           }}
+          onNew={() => {
+            setRefId(null)
+            setRefView('edit')
+          }}
         />
       )
   } else if (tab === 'templates') {

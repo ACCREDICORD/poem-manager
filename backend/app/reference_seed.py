@@ -31,7 +31,7 @@ def store_reference_poems(db: Session) -> int:
     return added
 
 
-async def _evaluate(r: models.ReferenceArticle, model: str, reasoning: str) -> None:
+async def evaluate_reference(r: models.ReferenceArticle, model: str, reasoning: str) -> None:
     results, report = await score_poem(
         title=r.title,
         content=r.content,
@@ -59,6 +59,6 @@ async def seed_reference_articles(db: Session, model: str, reasoning: str) -> in
         .all()
     )
     for r in rows:
-        await _evaluate(r, model, reasoning)
+        await evaluate_reference(r, model, reasoning)
         db.commit()
     return len(rows)
