@@ -71,6 +71,14 @@ def list_references(db: Session = Depends(get_db)):
     return db.query(models.ReferenceArticle).order_by(models.ReferenceArticle.id).all()
 
 
+@router.get("/{ref_id}", response_model=schemas.ReferenceOut)
+def get_reference(ref_id: int, db: Session = Depends(get_db)):
+    ref = db.get(models.ReferenceArticle, ref_id)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Reference not found")
+    return ref
+
+
 @router.post("", response_model=schemas.ReferenceOut, status_code=201)
 def create_reference(payload: ReferenceCreate, db: Session = Depends(get_db)):
     ref = models.ReferenceArticle(
