@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import inspect, text
 
 # 确保前端资源以正确 MIME 返回（Windows 上 Python 可能把 .js 误判为 text/plain）
 mimetypes.add_type("application/javascript", ".js")
@@ -15,10 +16,20 @@ from . import models  # noqa: F401  (register models before create_all)
 from .auth import auth_middleware, hash_password
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, UPLOAD_DIR
 from .database import Base, SessionLocal, engine
-from .routers import agent, auth, chat, imports, poems, templates
+from .routers import agent, auth, chat, imports, poems, references, templates
 from .seed_data import seed_templates
 
 Base.metadata.create_all(bind=engine)
+
+# 轻量迁移：为已有库补缺失列（保留数据）
+_insp = inspect(engine)
+if "poems" in _insp.get_table_names():
+    _cols = {c["name"] for c in _insp.get_columns("poems")}
+    with engine.begin() as _conn:
+        if "agent_spirit_score" not in _cols:
+            _conn.execute(text("ALTER TABLE poems ADD COLUMN agent_spirit_score FLOAT"))
+        if "agent_form_score" not in _cols:
+            _conn.execute(text("ALTER TABLE poems ADD COLUMN agent_form_score FLOAT"))
 
 # Seed preset templates + ensure a single user exists
 with SessionLocal() as db:
@@ -55,6 +66,7 @@ app.include_router(templates.router, prefix="/api/templates", tags=["templates"]
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
 app.include_router(imports.router, prefix="/api/import", tags=["import"])
+app.include_router(references.router, prefix="/api/references", tags=["references"])
 
 # Serve uploaded poem images (protected by auth middleware)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

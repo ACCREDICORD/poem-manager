@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -32,10 +33,12 @@ class Poem(Base):
     is_favorite: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     annotations: Mapped[list] = mapped_column(JSON, default=list)
 
-    # Scoring (non-mandatory)
-    user_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    agent_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    comprehensive_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Scoring (non-mandatory, 5 分制)
+    user_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    agent_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 综合分（神+形）
+    agent_spirit_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 神分
+    agent_form_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # 形分
+    comprehensive_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     agent_scores: Mapped[list] = mapped_column(JSON, default=list)
     agent_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
@@ -81,6 +84,21 @@ class Image(Base):
     @property
     def url(self) -> str:
         return f"/media/{self.stored_path}" if self.stored_path else ""
+
+
+class ReferenceArticle(Base):
+    __tablename__ = "reference_articles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    author: Mapped[str] = mapped_column(String(50), default="")
+    kind: Mapped[str] = mapped_column(String(10), default="ci")  # ci 词 / shi 诗
+    content: Mapped[str] = mapped_column(Text, default="")
+    spirit_analysis: Mapped[str] = mapped_column(Text, default="")  # 神维度分析
+    form_analysis: Mapped[str] = mapped_column(Text, default="")  # 形维度分析
+    score: Mapped[float] = mapped_column(Float, default=5.0)
+    article: Mapped[str] = mapped_column(Text, default="")  # 综合分析文章
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Message(Base):

@@ -11,7 +11,7 @@ class PoemBase(BaseModel):
     created_date: date | None = None
     is_favorite: bool = False
     annotations: list[dict] = []
-    user_score: int | None = None
+    user_score: float | None = None
     source: str = "manual"
 
 
@@ -27,7 +27,7 @@ class PoemUpdate(BaseModel):
     created_date: date | None = None
     is_favorite: bool | None = None
     annotations: list[dict] | None = None
-    user_score: int | None = None
+    user_score: float | None = None
     source: str | None = None
 
 
@@ -46,13 +46,30 @@ class PoemOut(PoemBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    agent_score: int | None = None
-    comprehensive_score: int | None = None
+    agent_score: float | None = None
+    agent_spirit_score: float | None = None
+    agent_form_score: float | None = None
+    comprehensive_score: float | None = None
     agent_scores: list[dict] = []
     agent_report: dict | None = None
     images: list[ImageOut] = []
     created_at: datetime
     updated_at: datetime
+
+
+class ReferenceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    author: str
+    kind: str
+    content: str
+    spirit_analysis: str
+    form_analysis: str
+    score: float
+    article: str
+    created_at: datetime
 
 
 class TemplateBase(BaseModel):

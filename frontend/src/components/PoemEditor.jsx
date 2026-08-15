@@ -182,11 +182,12 @@ export default function PoemEditor({ id, onSaved, onCancel, refresh }) {
           </Field>
         </div>
 
-        <Field label="自评分（0–100，可留空）">
+        <Field label="自评分（0–5，可留空）">
           <input
             type="number"
             min="0"
-            max="100"
+            max="5"
+            step="0.1"
             value={form.user_score}
             onChange={(e) => set('user_score', e.target.value)}
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"

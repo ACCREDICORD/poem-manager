@@ -31,7 +31,7 @@ def recompute_comprehensive(poem: models.Poem) -> None:
     """综合评分 = user_score 与 agent_score 各占 50% 加权平均；一方缺失取另一方。"""
     u, a = poem.user_score, poem.agent_score
     if u is not None and a is not None:
-        poem.comprehensive_score = round(0.5 * u + 0.5 * a)
+        poem.comprehensive_score = round(0.5 * u + 0.5 * a, 1)
     elif u is not None:
         poem.comprehensive_score = u
     elif a is not None:
@@ -231,12 +231,23 @@ async def _run_scoring(poem_id: int, model_name: str, reasoning: str) -> None:
                 .filter(models.Template.name == poem.category)
                 .first()
             )
+        references = (
+            db.query(models.ReferenceArticle).order_by(models.ReferenceArticle.id).all()
+        )
         results, report = await score_poem(
-            poem, template=template, model=model_name, reasoning=reasoning
+            title=poem.title,
+            content=poem.content,
+            category=poem.category,
+            template=template,
+            references=references,
+            model=model_name,
+            reasoning=reasoning,
         )
         poem.agent_scores = results
         poem.agent_report = report
-        poem.agent_score = int(report.get("total", 0))
+        poem.agent_score = report.get("total")
+        poem.agent_spirit_score = report.get("spirit_score")
+        poem.agent_form_score = report.get("form_score")
         recompute_comprehensive(poem)
         db.commit()
         _rating_status[poem_id] = "done"

@@ -186,3 +186,18 @@ export const importApi = {
     return request('/import/save', { method: 'POST', body: JSON.stringify({ items }) })
   },
 }
+
+export const referencesApi = {
+  list() {
+    return request('/references')
+  },
+  addFromPoem(poemId) {
+    return request(`/references/from-poem/${poemId}`, { method: 'POST' })
+  },
+  seed(opts = {}) {
+    return request('/references/seed', { method: 'POST', body: JSON.stringify(opts) })
+  },
+  seedStatus() {
+    return request('/references/seed/status')
+  },
+}

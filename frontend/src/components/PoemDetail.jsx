@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { poemsApi } from '../api.js'
+import { poemsApi, referencesApi } from '../api.js'
 import ChatPanel from './ChatPanel.jsx'
 
 export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
@@ -7,12 +7,22 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
   const [loading, setLoading] = useState(true)
   const [showChat, setShowChat] = useState(false)
   const [rating, setRating] = useState(false)
+  const [rateMode, setRateMode] = useState('quick')
   const pollRef = useRef(null)
 
   const stopPolling = () => {
     if (pollRef.current) {
       clearTimeout(pollRef.current)
       pollRef.current = null
+    }
+  }
+
+  const askAddReference = (p) => {
+    if (confirm(`这首诗 AI 综合分 ${p.agent_score}（>4.5），是否加入参考基准库？`)) {
+      referencesApi
+        .addFromPoem(p.id)
+        .then(() => alert('已加入参考基准库'))
+        .catch((e) => alert(e.message || '加入失败'))
     }
   }
 
@@ -25,6 +35,9 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
           setRating(false)
           const updated = await poemsApi.get(poemId)
           setPoem(updated)
+          if (updated.agent_score != null && updated.agent_score > 4.5) {
+            askAddReference(updated)
+          }
           return
         }
         if (res.status === 'error') {
@@ -85,7 +98,11 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
   const rate = async () => {
     setRating(true)
     try {
-      await poemsApi.rate(poem.id)
+      const opts =
+        rateMode === 'quick'
+          ? { model: 'flash', reasoning: 'low' }
+          : { model: 'pro', reasoning: 'high' }
+      await poemsApi.rate(poem.id, opts)
       pollUntilDone(poem.id)
     } catch (e) {
       setRating(false)
@@ -139,16 +156,22 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
           {poem.source === 'import' && <span className="text-slate-400">（导入）</span>}
         </div>
 
-        {/* Scores */}
+        {/* Scores (5 分制) */}
         {(poem.user_score != null ||
           poem.agent_score != null ||
           poem.comprehensive_score != null) && (
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {poem.user_score != null && (
               <ScoreBadge label="自评" value={poem.user_score} />
             )}
             {poem.agent_score != null && (
-              <ScoreBadge label="AI 评分" value={poem.agent_score} />
+              <ScoreBadge label="AI 综合" value={poem.agent_score} />
+            )}
+            {poem.agent_spirit_score != null && (
+              <ScoreBadge label="神" value={poem.agent_spirit_score} />
+            )}
+            {poem.agent_form_score != null && (
+              <ScoreBadge label="形" value={poem.agent_form_score} />
             )}
             {poem.comprehensive_score != null && (
               <ScoreBadge label="综合" value={poem.comprehensive_score} highlight />
@@ -156,13 +179,33 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
           </div>
         )}
 
-        <button
-          onClick={rate}
-          disabled={rating}
-          className="mt-3 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm text-teal-700 disabled:opacity-50"
-        >
-          {rating ? '评分中…' : poem.agent_score != null ? '重新让 agents 评分' : '让 agents 评分'}
-        </button>
+        <div className="mt-3 flex items-center gap-2">
+          <div className="flex overflow-hidden rounded-lg border border-slate-200">
+            <button
+              onClick={() => setRateMode('quick')}
+              className={`px-2.5 py-1 text-xs ${
+                rateMode === 'quick' ? 'bg-teal-600 text-white' : 'text-slate-500'
+              }`}
+            >
+              快速
+            </button>
+            <button
+              onClick={() => setRateMode('deep')}
+              className={`px-2.5 py-1 text-xs ${
+                rateMode === 'deep' ? 'bg-teal-600 text-white' : 'text-slate-500'
+              }`}
+            >
+              深度
+            </button>
+          </div>
+          <button
+            onClick={rate}
+            disabled={rating}
+            className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm text-teal-700 disabled:opacity-50"
+          >
+            {rating ? '评分中…' : poem.agent_score != null ? '重新评分' : '让 agents 评分'}
+          </button>
+        </div>
 
         {poem.tags?.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
@@ -189,42 +232,15 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
         {poem.agent_report && (
           <div className="mt-5 border-t border-slate-100 pt-4">
             <h2 className="mb-2 text-sm font-semibold text-slate-500">AI 赏析报告</h2>
-            {poem.agent_report.dimension_scores && (
-              <div className="mb-3 flex flex-wrap gap-1.5">
-                {Object.entries(poem.agent_report.dimension_scores).map(([k, v]) => (
-                  <span
-                    key={k}
-                    className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
-                  >
-                    {k} {v}
-                  </span>
-                ))}
-              </div>
-            )}
-            {poem.agent_report.per_dimension_review && (
-              <p className="mb-2 whitespace-pre-wrap text-sm text-slate-600">
-                {poem.agent_report.per_dimension_review}
+            {poem.agent_report.article && (
+              <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                {poem.agent_report.article}
               </p>
-            )}
-            {poem.agent_report.strengths && (
-              <p className="mb-2 text-sm text-slate-600">
-                <span className="font-medium text-emerald-600">优点：</span>
-                {poem.agent_report.strengths}
-              </p>
-            )}
-            {poem.agent_report.weaknesses && (
-              <p className="mb-2 text-sm text-slate-600">
-                <span className="font-medium text-amber-600">不足：</span>
-                {poem.agent_report.weaknesses}
-              </p>
-            )}
-            {poem.agent_report.summary && (
-              <p className="text-sm font-medium text-teal-700">{poem.agent_report.summary}</p>
             )}
             {poem.agent_scores?.length > 0 && (
               <details className="mt-3 text-sm">
                 <summary className="cursor-pointer text-xs text-slate-400">
-                  5 位评委明细
+                  4 位评委明细（神×2、形×2）
                 </summary>
                 <div className="mt-2 space-y-1.5">
                   {poem.agent_scores.map((s, i) => (

@@ -1,4 +1,4 @@
-"""agents 评分：5 个评委独立打分（不同维度）+ 1 个裁判综合报告。"""
+"""agents 评分：神/形双维度（各 2 评委独立评审）+ 1 裁判综合，5 分制，参考基准校准。"""
 
 import asyncio
 import json
@@ -7,9 +7,18 @@ import re
 from . import models
 from .deepseek import chat_complete
 
-DIMENSIONS = ["意境", "格律音韵", "炼字语言", "情感立意", "章法结构"]
+DIMENSIONS = ["神", "形"]
+JUDGES_PER_DIM = 2
 
-SCORE_ANCHOR = "评分锚点（百分制）：85-100 上乘；70-84 佳作；60-69 尚可；60 以下一般。"
+SCORE_ANCHOR = (
+    "评分采用 5 分制（保留一位小数）。6 档参考：0-1 差，1-2 一般，2-3 尚可，3-4 良好，"
+    "4-4.5 优秀，4.5-5 顶尖。"
+)
+
+_DIM_DESC = {
+    "神": "作者的思想情感、哲理哲思、主题主旨、立意、写作目的等内在精神层面",
+    "形": "作品的形态：格律、结构、艺术手法、表现形式、遣词造句等外在形式层面",
+}
 
 
 def extract_json(text: str) -> dict:
@@ -27,58 +36,95 @@ def extract_json(text: str) -> dict:
         raise
 
 
-def _judge_prompt(dim: str, poem: models.Poem, template: models.Template | None) -> str:
+def _reference_summary(references: list) -> str:
+    """把参考文章压缩成注入评委提示词用的锚点摘要。"""
+    if not references:
+        return "（暂无参考基准）"
+    lines = []
+    for r in references:
+        spirit = (r.spirit_analysis or "").replace("\n", " ")[:60]
+        form = (r.form_analysis or "").replace("\n", " ")[:60]
+        lines.append(f"《{r.title}》（{r.author}）5.0分｜神：{spirit}｜形：{form}")
+    return "\n".join(lines)
+
+
+def _judge_prompt(
+    dim: str,
+    title: str,
+    content: str,
+    category: str,
+    template: models.Template | None,
+    ref_summary: str,
+) -> str:
     prompt = (
-        f"你是一位中国古典诗词评审，请只从「{dim}」这一维度打分。\n"
+        f"你是一位诗词评审，请只从「{dim}」这一维度（{_DIM_DESC[dim]}）独立、完整地分析并打分。\n"
         f"{SCORE_ANCHOR}\n\n"
-        f"【诗词】标题：{poem.title or '（无题）'}；类型：{poem.category or '（未分类）'}\n"
-        f"{poem.content}\n"
+        f"【5.0 满分基准（以下为满分作品要点，请以此为准星校准你的打分）】\n{ref_summary}\n\n"
+        f"【待评作品】标题：{title or '（无题）'}；类型：{category or '（未分类）'}\n"
+        f"{content}\n"
     )
-    if dim == "格律音韵" and template and template.pattern:
+    if dim == "形" and template and template.pattern:
         prompt += f"\n【该类型格律参考】平仄：{'、'.join(template.pattern)}\n"
         if template.rhyme:
             prompt += f"押韵：{template.rhyme}\n"
-    prompt += '\n请只输出 JSON，格式：{"score": <0-100整数>, "reason": "<一句话理由>"}'
+    prompt += '\n请只输出 JSON：{"score": <0-5 一位小数>, "reason": "<200字内理由>"}'
     return prompt
 
 
-def _report_prompt(poem: models.Poem, results: list[dict]) -> str:
-    lines = [f"- {r['dimension']}：{r['score']} 分。{r['reason']}" for r in results]
+def _report_prompt(
+    title: str, content: str, category: str, results: list[dict], ref_summary: str
+) -> str:
+    shen = [r for r in results if r["dimension"] == "神"]
+    xing = [r for r in results if r["dimension"] == "形"]
+    shen_lines = "\n".join(
+        f"- 神评委{i + 1}：{r['score']} 分。{r['reason']}" for i, r in enumerate(shen)
+    )
+    xing_lines = "\n".join(
+        f"- 形评委{i + 1}：{r['score']} 分。{r['reason']}" for i, r in enumerate(xing)
+    )
     return (
-        "你是诗词评审委员会主席。5 位评委已从不同维度对同一首诗独立打分，请你综合并输出最终报告。\n"
-        "请校验各评委评分与理由是否自洽；若某评委与他人相差超过 20 分，请在报告中点明该分歧。\n\n"
-        f"【诗词】标题：{poem.title or '（无题）'}；类型：{poem.category or '（未分类）'}\n"
-        f"{poem.content}\n\n"
-        "【5 位评委】\n"
-        + "\n".join(lines)
-        + "\n\n"
-        "请只输出 JSON，格式："
-        '{"total": <最终总分0-100>, "dimension_scores": {"意境":0,"格律音韵":0,"炼字语言":0,"情感立意":0,"章法结构":0}, '
-        '"per_dimension_review": "<逐维度点评>", "strengths": "<优点>", "weaknesses": "<不足/可改>", "summary": "<一句总评>"}'
+        "你是诗词评审委员会主席。2 位「神」评委和 2 位「形」评委已对同一作品独立打分，请综合出最终结果。\n"
+        "请校验各评委是否自洽；若同一维度内两位评委分歧过大，请在文中点明。\n\n"
+        f"【5.0 满分基准】\n{ref_summary}\n\n"
+        f"【待评作品】标题：{title or '（无题）'}；类型：{category or '（未分类）'}\n{content}\n\n"
+        f"【神评委】\n{shen_lines}\n\n【形评委】\n{xing_lines}\n\n"
+        "请只输出 JSON："
+        '{"total": <综合分 0-5 一位小数>, "spirit_score": <神分 0-5 一位小数>, '
+        '"form_score": <形分 0-5 一位小数>, "article": "<综合分析文章，覆盖神与形两个维度，500-1000字>"}'
     )
 
 
 async def score_poem(
-    poem: models.Poem,
+    title: str,
+    content: str,
+    category: str = "",
     template: models.Template | None = None,
+    references: list | None = None,
     model: str = "deepseek-v4-pro",
     reasoning: str = "high",
 ) -> tuple[list[dict], dict]:
-    """5 评委并行打分，1 裁判综合。返回 (5份评委明细, 裁判报告)。"""
+    """神/形各 2 评委并行独立评审，1 裁判综合。返回 (4份评委明细, 裁判报告)。"""
+    references = references or []
+    ref_summary = _reference_summary(references)
+
     async def judge_one(dim: str) -> dict:
-        msgs = [{"role": "user", "content": _judge_prompt(dim, poem, template)}]
+        msgs = [{"role": "user", "content": _judge_prompt(dim, title, content, category, template, ref_summary)}]
         resp = await chat_complete(msgs, model=model, reasoning=reasoning)
-        content = resp["choices"][0]["message"]["content"]
-        data = extract_json(content)
+        raw = resp["choices"][0]["message"]["content"]
+        data = extract_json(raw)
         data["dimension"] = dim
-        data["score"] = int(data["score"])
+        data["score"] = round(float(data["score"]), 1)
         return data
 
-    results = await asyncio.gather(*(judge_one(d) for d in DIMENSIONS))
+    tasks = [judge_one(dim) for dim in DIMENSIONS for _ in range(JUDGES_PER_DIM)]
+    results = await asyncio.gather(*tasks)
 
-    msgs = [{"role": "user", "content": _report_prompt(poem, results)}]
+    msgs = [{"role": "user", "content": _report_prompt(title, content, category, results, ref_summary)}]
     resp = await chat_complete(msgs, model=model, reasoning=reasoning)
-    content = resp["choices"][0]["message"]["content"]
-    report = extract_json(content)
+    raw = resp["choices"][0]["message"]["content"]
+    report = extract_json(raw)
+    report["total"] = round(float(report.get("total", 0)), 1)
+    report["spirit_score"] = round(float(report.get("spirit_score", 0)), 1)
+    report["form_score"] = round(float(report.get("form_score", 0)), 1)
 
     return results, report
