@@ -1,0 +1,14 @@
+# systemd 服务：把 /opt/poem-manager 换成实际部署路径
+[Unit]
+Description=Poem Manager Backend
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/poem-manager/backend
+ExecStart=/opt/poem-manager/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+EnvironmentFile=/opt/poem-manager/backend/.env
+
+[Install]
+WantedBy=multi-user.target

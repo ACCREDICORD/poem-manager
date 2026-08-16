@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+*.db
+*.sqlite3
+.env
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# uploads (poem images)
+uploads/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# misc
+*.log
