@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { agentApi, chatApi } from '../api.js'
+import { db, tempId } from '../db.js'
+import { localKey, directChatStream, buildLocalChatMessages } from '../directAi.js'
 
 const WORKSPACE_LABELS = {
   poems: '诗词库',
@@ -20,26 +22,51 @@ export default function ChatPanel({ poemId, workspace, onClose }) {
   const [agentThinking, setAgentThinking] = useState(false)
   const [model, setModel] = useState('flash')
   const [reasoning, setReasoning] = useState('high')
+  const [showSettings, setShowSettings] = useState(false)
+  const [keyInput, setKeyInput] = useState(localKey.get())
   const bottomRef = useRef(null)
 
   const messages = mode === 'chat' ? chatMsgs : agentMsgs
   const setMessages = mode === 'chat' ? setChatMsgs : setAgentMsgs
 
+  const loadLocalHistory = async (which) => {
+    const rows = await db.messages
+      .where('session_id')
+      .equals(sessionId)
+      .filter((m) => m.mode === which)
+      .sortBy('id')
+    return rows.map((m) => ({ role: m.role, content: m.content }))
+  }
+
   useEffect(() => {
-    // 两个模式的会话相互独立，各自从数据库恢复历史
+    // 两个模式的会话相互独立；优先服务器历史，断联时回退本机镜像
     chatApi
       .history(sessionId)
       .then((h) => setChatMsgs(h.map((m) => ({ role: m.role, content: m.content }))))
-      .catch(() => {})
+      .catch(() => loadLocalHistory('chat').then(setChatMsgs))
     agentApi
       .history(sessionId)
       .then((h) => setAgentMsgs(h.map((m) => ({ role: m.role, content: m.content }))))
-      .catch(() => {})
+      .catch(() => loadLocalHistory('agent').then(setAgentMsgs))
   }, [sessionId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, agentThinking])
+
+  const mirrorMessage = async (role, content) => {
+    if (!content) return
+    await db.messages.put({
+      id: tempId(),
+      session_id: sessionId,
+      role,
+      content,
+      mode: 'chat',
+      created_at: new Date().toISOString(),
+    })
+  }
+
+  const isNetworkError = (e) => e instanceof TypeError || /服务器不可达|Failed to fetch|NetworkError/i.test(e.message || '')
 
   const send = async () => {
     const text = input.trim()
@@ -50,41 +77,83 @@ export default function ChatPanel({ poemId, workspace, onClose }) {
 
     if (mode === 'chat') {
       setMessages((prev) => [...prev, { role: 'assistant', content: '', thinking: '' }])
-      try {
-        await chatApi.stream(
-          { message: text, poem_id: poemId, session_id: sessionId, model, reasoning },
-          (delta) => {
-            setMessages((prev) => {
-              const next = [...prev]
-              const last = next[next.length - 1]
-              if (last && last.role === 'assistant') last.content += delta
-              return next
-            })
-          },
-          (reasoningDelta) => {
-            setMessages((prev) => {
-              const next = [...prev]
-              const last = next[next.length - 1]
-              if (last && last.role === 'assistant') last.thinking = (last.thinking || '') + reasoningDelta
-              return next
-            })
-          },
-        )
-      } catch (e) {
+      let contentText = ''
+      const onDelta = (delta) => {
+        contentText += delta
         setMessages((prev) => {
           const next = [...prev]
           const last = next[next.length - 1]
-          if (last && last.role === 'assistant') last.content = `（出错了：${e.message}）`
+          if (last && last.role === 'assistant') last.content += delta
           return next
         })
       }
+      const onReasoning = (reasoningDelta) => {
+        setMessages((prev) => {
+          const next = [...prev]
+          const last = next[next.length - 1]
+          if (last && last.role === 'assistant') last.thinking = (last.thinking || '') + reasoningDelta
+          return next
+        })
+      }
+      try {
+        await chatApi.stream(
+          { message: text, poem_id: poemId, session_id: sessionId, model, reasoning },
+          onDelta,
+          onReasoning,
+        )
+      } catch (e) {
+        if (isNetworkError(e)) {
+          // 与服务器断联：浏览器直连 DeepSeek（key 存本机）
+          try {
+            setMessages((prev) => {
+              const next = [...prev]
+              const last = next[next.length - 1]
+              if (last && last.role === 'assistant') {
+                last.content = ''
+                last.thinking = ''
+              }
+              return next
+            })
+            contentText = ''
+            const history = await loadLocalHistory('chat')
+            const msgs = await buildLocalChatMessages({
+              sessionId,
+              poemId,
+              templateId: null,
+              history,
+              userText: text,
+            })
+            await directChatStream({ messages: msgs, model, reasoning, onReasoning, onDelta })
+          } catch (e2) {
+            setMessages((prev) => {
+              const next = [...prev]
+              const last = next[next.length - 1]
+              if (last && last.role === 'assistant') last.content = `（出错了：${e2.message}）`
+              return next
+            })
+          }
+        } else {
+          setMessages((prev) => {
+            const next = [...prev]
+            const last = next[next.length - 1]
+            if (last && last.role === 'assistant') last.content = `（出错了：${e.message}）`
+            return next
+          })
+        }
+      }
+      // 本机历史镜像（两路径都写，供断联时读取）
+      mirrorMessage('user', text)
+      if (contentText) mirrorMessage('assistant', contentText)
     } else {
       setAgentThinking(true)
       try {
         const res = await agentApi.message({ message: text, session_id: sessionId, model, reasoning })
         applyAgentResult(res)
       } catch (e) {
-        setMessages((prev) => [...prev, { role: 'assistant', content: `（出错了：${e.message}）` }])
+        const msg = isNetworkError(e)
+          ? '（与服务器断联：Agent 功能需连接服务器使用；对话/赏析/导入识别可断联直连）'
+          : `（出错了：${e.message}）`
+        setMessages((prev) => [...prev, { role: 'assistant', content: msg }])
       }
       setAgentThinking(false)
     }
@@ -129,9 +198,21 @@ export default function ChatPanel({ poemId, workspace, onClose }) {
                 工作区：{workspaceLabel}
               </span>
             </h2>
-            <button onClick={onClose} className="text-slate-400 active:text-slate-600">
-              ✕
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setKeyInput(localKey.get())
+                  setShowSettings(true)
+                }}
+                title="本机 AI 直连设置（断联时用）"
+                className="text-slate-400 active:text-slate-600"
+              >
+                ⚙️
+              </button>
+              <button onClick={onClose} className="text-slate-400 active:text-slate-600">
+                ✕
+              </button>
+            </div>
           </div>
           <div className="mb-2 flex gap-1 rounded-lg bg-slate-100 p-1">
             <button
@@ -305,6 +386,54 @@ export default function ChatPanel({ poemId, workspace, onClose }) {
           </button>
         </footer>
       </div>
+
+      {showSettings && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40">
+          <div className="w-full max-w-2xl rounded-t-2xl bg-white p-4">
+            <header className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold text-slate-800">本机 AI 直连设置</h3>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400">
+                ✕
+              </button>
+            </header>
+            <p className="mb-3 text-xs leading-5 text-slate-500">
+              与服务器断联时，AI 对话 / 赏析 / 导入识别将<b>直连 DeepSeek</b>（手机需要有网）。
+              key 只保存在这台设备的浏览器里，不会上传到服务器。
+              <span className="text-amber-600">建议使用独立的低限额 key</span>
+              ，与服务器 key 分开，减少风险。
+            </p>
+            <input
+              type="password"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="sk-…（粘贴 DeepSeek API key）"
+              className="mb-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  localKey.set(keyInput)
+                  setShowSettings(false)
+                }}
+                disabled={!keyInput.trim()}
+                className="flex-1 rounded-lg bg-teal-600 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                保存到本机
+              </button>
+              <button
+                onClick={() => {
+                  localKey.clear()
+                  setKeyInput('')
+                  setShowSettings(false)
+                }}
+                className="rounded-lg border border-red-200 px-4 py-2 text-sm text-red-500"
+              >
+                清除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

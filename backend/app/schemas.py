@@ -29,6 +29,7 @@ class PoemUpdate(BaseModel):
     annotations: list[dict] | None = None
     user_score: float | None = None
     source: str | None = None
+    appreciation: str | None = None
 
 
 class ImageOut(BaseModel):
@@ -52,6 +53,7 @@ class PoemOut(PoemBase):
     comprehensive_score: float | None = None
     agent_scores: list[dict] = []
     agent_report: dict | None = None
+    appreciation: str = ""
     images: list[ImageOut] = []
     created_at: datetime
     updated_at: datetime
@@ -69,6 +71,31 @@ class ReferenceOut(BaseModel):
     form_analysis: str
     score: float
     article: str
+    created_at: datetime
+
+
+class AppreciationRefCreate(BaseModel):
+    title: str = ""
+    author: str = ""
+    kind: str = "ci"
+    content: str = ""
+
+
+class AppreciationRefUpdate(BaseModel):
+    title: str | None = None
+    author: str | None = None
+    kind: str | None = None
+    content: str | None = None
+
+
+class AppreciationRefOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    author: str
+    kind: str
+    content: str
     created_at: datetime
 
 

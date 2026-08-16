@@ -51,10 +51,11 @@ ADMIN_PASSWORD=一个强密码          # 启动时同步为此密码
 1. **数据库**：`backend/poems.db`（SQLite，勿手工删）。改表结构用 `app/main.py` 里 `create_all` 后那段「轻量迁移」补列，不要破坏已有数据。
 2. **AI 实现方式**：所有 AI 都是直接调 DeepSeek API（`app/deepseek.py` 的 `stream_chat` / `chat_complete`），没有用 agent 框架。评分在 `app/scoring.py`（神/形双维度、5 分制），参考基准在 `app/reference_data.py` + `reference_seed.py`。
 3. **评分是后台任务**：`POST /api/poems/{id}/rate` 立即返回 running，前端轮询 `/rate/status`；改评分逻辑时保持这个"后台 + 轮询"模式。
-4. **前端改完必须 `npm run build`**，后端会直接 serve `frontend/dist/`。
-5. **参考库初始化**：`POST /api/references/seed`（批量）或 `/api/references/{id}/init`（单个），只评审 `article` 为空的条目。
-6. **鉴权**：除 `/api/auth/login`、`/api/health` 外，`/api` 和 `/media` 都要带 `Authorization: Bearer <token>`。
-7. **AI 工作区体系**（agent 模式）：`session_id` 即工作区标识，`general` 全局、`poems`/`templates`/`references` 为三个栏目工作区（父级）、`poem_{id}` 为单首诗词工作区（子级）。同级工作区工具集互相隔离；子工作区做库级/他诗操作时步骤会被标记 `escalation=true`（越权申请），用户批准后才执行。工作区系统提示词在 `app/routers/agent.py` 的 `build_system_prompt`。agent 对话持久化在 `messages` 表（`mode='agent'`），`/api/agent/history` 读取；chat 历史接口只返回 `mode='chat'`，两者互不串扰。
+4. **赏析**：`POST /api/poems/{id}/appreciate` 同样后台 + 轮询（`/appreciate/status`），生成鉴赏辞典风格文章存入 `poems.appreciation`，与评分解读（`agent_report`）相互独立。风格指南与 16 篇范文在 `app/appreciation_seed.py`（原创撰写，勿抄录版权书籍），生成逻辑在 `app/appreciation.py`。
+5. **前端改完必须 `npm run build`**，后端会直接 serve `frontend/dist/`。
+6. **参考库初始化**：`POST /api/references/seed`（批量）或 `/api/references/{id}/init`（单个），只评审 `article` 为空的条目。
+7. **鉴权**：除 `/api/auth/login`、`/api/health` 外，`/api` 和 `/media` 都要带 `Authorization: Bearer <token>`。
+8. **AI 工作区体系**（agent 模式）：`session_id` 即工作区标识，`general` 全局、`poems`/`templates`/`references` 为三个栏目工作区（父级）、`poem_{id}` 为单首诗词工作区（子级）。同级工作区工具集互相隔离；子工作区做库级/他诗操作时步骤会被标记 `escalation=true`（越权申请），用户批准后才执行。工作区系统提示词在 `app/routers/agent.py` 的 `build_system_prompt`。agent 对话持久化在 `messages` 表（`mode='agent'`），`/api/agent/history` 读取；chat 历史接口只返回 `mode='chat'`，两者互不串扰。
 
 ## 部署
 

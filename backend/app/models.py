@@ -43,6 +43,7 @@ class Poem(Base):
     agent_report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     source: Mapped[str] = mapped_column(String(20), default="manual")
+    appreciation: Mapped[str] = mapped_column(Text, default="")  # AI 赏析文章（鉴赏辞典风格）
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
@@ -98,6 +99,19 @@ class ReferenceArticle(Base):
     form_analysis: Mapped[str] = mapped_column(Text, default="")  # 形维度分析
     score: Mapped[float] = mapped_column(Float, default=5.0)
     article: Mapped[str] = mapped_column(Text, default="")  # 综合分析文章
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class AppreciationRef(Base):
+    """赏析范文库：仿《唐诗鉴赏辞典》等书籍风格的鉴赏文章，供生成赏析时作风格参照。"""
+
+    __tablename__ = "appreciation_refs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    author: Mapped[str] = mapped_column(String(50), default="")
+    kind: Mapped[str] = mapped_column(String(10), default="ci")  # ci 词 / shi 诗
+    content: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

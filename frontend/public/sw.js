@@ -1,4 +1,4 @@
-const CACHE = 'poem-manager-v4'
+const CACHE = 'poem-manager-v6'
 
 self.addEventListener('install', () => {
   self.skipWaiting()

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { poemsApi, referencesApi, mediaUrl } from '../api.js'
+import { db } from '../db.js'
+import { generateAppreciationLocal } from '../directAi.js'
 import ChatPanel from './ChatPanel.jsx'
 
 export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
@@ -8,12 +10,22 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
   const [showChat, setShowChat] = useState(false)
   const [rating, setRating] = useState(false)
   const [rateMode, setRateMode] = useState('quick')
+  const [appr, setAppr] = useState(false)
+  const [apprMode, setApprMode] = useState('deep')
   const pollRef = useRef(null)
+  const apprPollRef = useRef(null)
 
   const stopPolling = () => {
     if (pollRef.current) {
       clearTimeout(pollRef.current)
       pollRef.current = null
+    }
+  }
+
+  const stopApprPolling = () => {
+    if (apprPollRef.current) {
+      clearTimeout(apprPollRef.current)
+      apprPollRef.current = null
     }
   }
 
@@ -33,7 +45,7 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
         const res = await poemsApi.rateStatus(poemId)
         if (res.status === 'done') {
           setRating(false)
-          const updated = await poemsApi.get(poemId)
+          const updated = await poemsApi.refreshFromServer(poemId)
           setPoem(updated)
           if (updated.agent_score != null && updated.agent_score > 4.5) {
             askAddReference(updated)
@@ -53,11 +65,35 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
     check()
   }
 
+  const apprPollUntilDone = (poemId) => {
+    stopApprPolling()
+    const check = async () => {
+      try {
+        const res = await poemsApi.appreciateStatus(poemId)
+        if (res.status === 'done') {
+          setAppr(false)
+          const updated = await poemsApi.refreshFromServer(poemId)
+          setPoem(updated)
+          return
+        }
+        if (res.status === 'error') {
+          setAppr(false)
+          alert('赏析生成失败，请重试')
+          return
+        }
+        apprPollRef.current = setTimeout(check, 3000)
+      } catch (e) {
+        setAppr(false)
+      }
+    }
+    check()
+  }
+
   useEffect(() => {
     let active = true
     setLoading(true)
     poemsApi
-      .get(id)
+      .refreshFromServer(id)
       .then((d) => {
         if (active) setPoem(d)
       })
@@ -74,9 +110,20 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
         }
       })
       .catch(() => {})
+    // 若正在生成赏析则继续轮询
+    poemsApi
+      .appreciateStatus(id)
+      .then((res) => {
+        if (res.status === 'running') {
+          setAppr(true)
+          apprPollUntilDone(id)
+        }
+      })
+      .catch(() => {})
     return () => {
       active = false
       stopPolling()
+      stopApprPolling()
     }
   }, [id])
 
@@ -106,7 +153,50 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
       pollUntilDone(poem.id)
     } catch (e) {
       setRating(false)
-      alert(e.message || '评分失败')
+      const msg =
+        e instanceof TypeError || /服务器不可达|Failed to fetch/i.test(e.message || '')
+          ? '评分需要连接服务器（断联暂不支持评分）'
+          : e.message || '评分失败'
+      alert(msg)
+    }
+  }
+
+  const appreciate = async () => {
+    setAppr(true)
+    const opts =
+      apprMode === 'quick'
+        ? { model: 'flash', reasoning: 'low' }
+        : { model: 'pro', reasoning: 'high' }
+    const isNetwork = (e) => e instanceof TypeError || /服务器不可达|Failed to fetch|NetworkError/i.test(e.message || '')
+    try {
+      await poemsApi.appreciate(poem.id, opts)
+      apprPollUntilDone(poem.id)
+    } catch (e) {
+      if (isNetwork(e)) {
+        // 与服务器断联：本机直连 DeepSeek 生成赏析，结果入同步队列
+        try {
+          let kind = 'ci'
+          const tpl = await db.templates.where('name').equals(poem.category || '').first()
+          if (tpl) kind = tpl.kind
+          const article = await generateAppreciationLocal({
+            title: poem.title,
+            content: poem.content,
+            category: poem.category,
+            kind,
+            model: apprMode === 'quick' ? 'flash' : 'pro',
+            reasoning: apprMode === 'quick' ? 'low' : 'high',
+          })
+          const updated = await poemsApi.update(poem.id, { appreciation: article })
+          setPoem(updated)
+          setAppr(false)
+        } catch (e2) {
+          setAppr(false)
+          alert(e2.message || '生成失败')
+        }
+      } else {
+        setAppr(false)
+        alert(e.message || '生成失败')
+      }
     }
   }
 
@@ -228,10 +318,10 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
           <p className="text-slate-400">（无正文）</p>
         )}
 
-        {/* AI 赏析报告 */}
+        {/* 评分解读（评分理由阐述，保留） */}
         {poem.agent_report && (
           <div className="mt-5 border-t border-slate-100 pt-4">
-            <h2 className="mb-2 text-sm font-semibold text-slate-500">AI 赏析报告</h2>
+            <h2 className="mb-2 text-sm font-semibold text-slate-500">评分解读</h2>
             {poem.agent_report.article && (
               <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">
                 {poem.agent_report.article}
@@ -256,6 +346,51 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
             )}
           </div>
         )}
+
+        {/* 赏析（鉴赏辞典风格文章） */}
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-500">赏析</h2>
+            <div className="flex items-center gap-2">
+              <div className="flex overflow-hidden rounded-lg border border-slate-200">
+                <button
+                  onClick={() => setApprMode('quick')}
+                  className={`px-2 py-0.5 text-xs ${
+                    apprMode === 'quick' ? 'bg-teal-600 text-white' : 'text-slate-500'
+                  }`}
+                >
+                  快速
+                </button>
+                <button
+                  onClick={() => setApprMode('deep')}
+                  className={`px-2 py-0.5 text-xs ${
+                    apprMode === 'deep' ? 'bg-teal-600 text-white' : 'text-slate-500'
+                  }`}
+                >
+                  深度
+                </button>
+              </div>
+              <button
+                onClick={appreciate}
+                disabled={appr}
+                className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm text-teal-700 disabled:opacity-50"
+              >
+                {appr ? '生成中…' : poem.appreciation ? '重新生成赏析' : '生成赏析'}
+              </button>
+            </div>
+          </div>
+          {poem.appreciation ? (
+            <div className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-[15px] leading-7 text-slate-700">
+              {poem.appreciation}
+            </div>
+          ) : (
+            !appr && (
+              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+                按《唐诗鉴赏辞典》《毛泽东诗词鉴赏》等书籍的笔法，生成一篇真正的赏析文章（知人论世、逐句细读、不涉及评分）。
+              </p>
+            )
+          )}
+        </div>
 
         {/* Annotations */}
         {poem.annotations?.length > 0 && (

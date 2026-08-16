@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { importApi } from '../api.js'
+import { useEffect, useRef, useState } from 'react'
+import { importApi, poemsApi } from '../api.js'
+import { analyzeImportLocal } from '../directAi.js'
 
 export default function ImportPanel({ onClose, onImported }) {
   const [text, setText] = useState('')
@@ -7,18 +8,76 @@ export default function ImportPanel({ onClose, onImported }) {
   const [analyzing, setAnalyzing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const pollRef = useRef(null)
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [])
+
+  const applyCandidates = (list) => {
+    setCandidates((list || []).map((c) => ({ ...c, selected: c.is_poem })))
+  }
+
+  const startPolling = () => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    pollRef.current = setInterval(async () => {
+      try {
+        const s = await importApi.analyzeStatus()
+        if (s.status === 'done') {
+          clearInterval(pollRef.current)
+          pollRef.current = null
+          setAnalyzing(false)
+          applyCandidates(s.candidates)
+          return
+        }
+        if (s.status === 'error') {
+          clearInterval(pollRef.current)
+          pollRef.current = null
+          setAnalyzing(false)
+          setError(s.error || '识别失败，请重试')
+        }
+      } catch {
+        // 单次轮询失败不终止（移动网络抖动），下个周期继续
+      }
+    }, 2500)
+  }
 
   const analyze = async () => {
-    if (!text.trim()) return
+    if (!text.trim() || analyzing) return
     setAnalyzing(true)
     setError('')
+    const isNetwork = (e) => e instanceof TypeError || /服务器不可达|Failed to fetch|NetworkError/i.test(e.message || '')
     try {
       const res = await importApi.analyze(text)
-      setCandidates(res.candidates.map((c) => ({ ...c, selected: c.is_poem })))
+      if (res.status === 'done') {
+        setAnalyzing(false)
+        applyCandidates(res.candidates)
+        return
+      }
+      if (res.status === 'busy') {
+        setAnalyzing(false)
+        setError(res.detail || '已有识别任务进行中，请稍候')
+        return
+      }
+      // running：进入轮询
+      startPolling()
     } catch (e) {
-      setError(e.message || '识别失败')
-    } finally {
-      setAnalyzing(false)
+      if (isNetwork(e)) {
+        // 与服务器断联：本机直连 DeepSeek 识别
+        try {
+          const cands = await analyzeImportLocal({ text })
+          setAnalyzing(false)
+          applyCandidates(cands)
+        } catch (e2) {
+          setAnalyzing(false)
+          setError(e2.message || '识别失败')
+        }
+      } else {
+        setAnalyzing(false)
+        setError(e.message || '识别失败')
+      }
     }
   }
 
@@ -26,13 +85,19 @@ export default function ImportPanel({ onClose, onImported }) {
     setCandidates((prev) => prev.map((c, idx) => (idx === i ? { ...c, [key]: val } : c)))
 
   const save = async () => {
-    const items = candidates
-      .filter((c) => c.selected)
-      .map((c) => ({ title: c.title, content: c.content, category: c.category }))
+    const items = candidates.filter((c) => c.selected)
     if (!items.length) return
     setSaving(true)
     try {
-      await importApi.save(items)
+      // 本地优先入库：断联时进同步队列，联网时自动上传
+      for (const it of items) {
+        await poemsApi.create({
+          title: it.title,
+          content: it.content,
+          category: it.category,
+          source: 'import',
+        })
+      }
       onImported()
       onClose()
     } catch (e) {

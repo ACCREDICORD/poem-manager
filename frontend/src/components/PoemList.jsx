@@ -152,7 +152,14 @@ export default function PoemList({ refreshKey, onSelect, onNew }) {
               >
                 <div className="flex items-center justify-between">
                   <span className="font-medium text-slate-800">{p.title || '（无题）'}</span>
-                  {p.is_favorite && <span className="text-amber-400">⭐</span>}
+                  <span className="flex items-center gap-2">
+                    {p.syncState === 'pending' && (
+                      <span className="text-xs text-amber-500" title="保存在本机，待同步到服务器">
+                        ⏳
+                      </span>
+                    )}
+                    {p.is_favorite && <span className="text-amber-400">⭐</span>}
+                  </span>
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-400">
                   {p.category && (

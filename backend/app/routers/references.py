@@ -71,6 +71,51 @@ def list_references(db: Session = Depends(get_db)):
     return db.query(models.ReferenceArticle).order_by(models.ReferenceArticle.id).all()
 
 
+# ---------- 赏析范文库（鉴赏辞典风格范文，供「生成赏析」作风格参照） ----------
+
+@router.get("/exemplars", response_model=list[schemas.AppreciationRefOut])
+def list_exemplars(db: Session = Depends(get_db)):
+    return db.query(models.AppreciationRef).order_by(models.AppreciationRef.id).all()
+
+
+@router.post("/exemplars", response_model=schemas.AppreciationRefOut, status_code=201)
+def create_exemplar(payload: schemas.AppreciationRefCreate, db: Session = Depends(get_db)):
+    ref = models.AppreciationRef(
+        title=payload.title,
+        author=payload.author,
+        kind=payload.kind,
+        content=payload.content,
+    )
+    db.add(ref)
+    db.commit()
+    db.refresh(ref)
+    return ref
+
+
+@router.put("/exemplars/{ex_id}", response_model=schemas.AppreciationRefOut)
+def update_exemplar(ex_id: int, payload: schemas.AppreciationRefUpdate, db: Session = Depends(get_db)):
+    ref = db.get(models.AppreciationRef, ex_id)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="范文不存在")
+    for k in ("title", "author", "kind", "content"):
+        v = getattr(payload, k)
+        if v is not None:
+            setattr(ref, k, v)
+    db.commit()
+    db.refresh(ref)
+    return ref
+
+
+@router.delete("/exemplars/{ex_id}")
+def delete_exemplar(ex_id: int, db: Session = Depends(get_db)):
+    ref = db.get(models.AppreciationRef, ex_id)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="范文不存在")
+    db.delete(ref)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/{ref_id}", response_model=schemas.ReferenceOut)
 def get_reference(ref_id: int, db: Session = Depends(get_db)):
     ref = db.get(models.ReferenceArticle, ref_id)

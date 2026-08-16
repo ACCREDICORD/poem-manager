@@ -13,6 +13,7 @@ mimetypes.add_type("application/javascript", ".mjs")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 from . import models  # noqa: F401  (register models before create_all)
+from .appreciation_seed import store_appreciation_refs
 from .auth import auth_middleware, hash_password
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, UPLOAD_DIR
 from .database import Base, SessionLocal, engine
@@ -31,11 +32,16 @@ if "poems" in _insp.get_table_names():
             _conn.execute(text("ALTER TABLE poems ADD COLUMN agent_spirit_score FLOAT"))
         if "agent_form_score" not in _cols:
             _conn.execute(text("ALTER TABLE poems ADD COLUMN agent_form_score FLOAT"))
+        if "appreciation" not in _cols:
+            _conn.execute(text("ALTER TABLE poems ADD COLUMN appreciation TEXT"))
+        # 归位历史行的 NULL（SQLite 加列不应用 Python 端 default）
+        _conn.execute(text("UPDATE poems SET appreciation = '' WHERE appreciation IS NULL"))
 
 # Seed preset templates + ensure a single user exists
 with SessionLocal() as db:
     seed_templates(db)
     store_reference_poems(db)
+    store_appreciation_refs(db)
     user = db.query(models.User).filter(models.User.username == ADMIN_USERNAME).first()
     if user is None:
         password = ADMIN_PASSWORD or secrets.token_urlsafe(12)

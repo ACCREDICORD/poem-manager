@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -9,6 +9,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..appreciation import generate_appreciation
 from ..config import DEEPSEEK_API_KEY, MODELS, UPLOAD_DIR
 from ..database import SessionLocal, get_db
 from ..scoring import score_poem
@@ -52,6 +53,7 @@ def list_poems(
     score_field: str | None = None,
     score_min: int | None = None,
     score_max: int | None = None,
+    updated_after: str | None = None,
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Poem)
@@ -75,6 +77,12 @@ def list_poems(
             query = query.filter(col >= score_min)
         if score_max is not None:
             query = query.filter(col <= score_max)
+    if updated_after:
+        try:
+            ts = datetime.fromisoformat(updated_after)
+            query = query.filter(models.Poem.updated_at > ts)
+        except ValueError:
+            pass
 
     sort_col = getattr(models.Poem, sort_by, None)
     if sort_col is None or sort_by not in _SORTABLE:
@@ -281,3 +289,75 @@ async def rate_poem(poem_id: int, req: RateRequest):
 @router.get("/{poem_id}/rate/status")
 def rate_status(poem_id: int):
     return {"status": _rating_status.get(poem_id, "none")}
+
+
+# ---------- 赏析（鉴赏辞典风格文章，独立于评分） ----------
+
+class AppreciateRequest(BaseModel):
+    model: str = "pro"  # flash | pro
+    reasoning: str = "high"  # none | low | high | max
+
+
+# 赏析状态：poem_id -> running | done | error（内存态，重启后重置）
+_appr_status: dict[int, str] = {}
+
+
+async def _run_appreciation(poem_id: int, model_name: str, reasoning: str) -> None:
+    """后台生成赏析文章，完成后落库。"""
+    db = SessionLocal()
+    try:
+        poem = db.get(models.Poem, poem_id)
+        if poem is None:
+            _appr_status[poem_id] = "error"
+            return
+        kind = "ci"
+        if poem.category:
+            tpl = (
+                db.query(models.Template)
+                .filter(models.Template.name == poem.category)
+                .first()
+            )
+            if tpl:
+                kind = tpl.kind
+        article = await generate_appreciation(
+            title=poem.title,
+            content=poem.content,
+            category=poem.category,
+            kind=kind,
+            db=db,
+            model=model_name,
+            reasoning=reasoning,
+        )
+        poem.appreciation = article
+        db.commit()
+        _appr_status[poem_id] = "done"
+    except Exception:
+        _appr_status[poem_id] = "error"
+    finally:
+        db.close()
+
+
+@router.post("/{poem_id}/appreciate")
+async def appreciate_poem(poem_id: int, req: AppreciateRequest):
+    if not DEEPSEEK_API_KEY:
+        raise HTTPException(status_code=400, detail="未配置 DeepSeek API key")
+
+    db = SessionLocal()
+    try:
+        if db.get(models.Poem, poem_id) is None:
+            raise HTTPException(status_code=404, detail="Poem not found")
+    finally:
+        db.close()
+
+    if _appr_status.get(poem_id) == "running":
+        return {"status": "running"}
+
+    model_name = MODELS.get(req.model, MODELS["pro"])
+    _appr_status[poem_id] = "running"
+    asyncio.create_task(_run_appreciation(poem_id, model_name, req.reasoning))
+    return {"status": "running"}
+
+
+@router.get("/{poem_id}/appreciate/status")
+def appreciate_status(poem_id: int):
+    return {"status": _appr_status.get(poem_id, "none")}
