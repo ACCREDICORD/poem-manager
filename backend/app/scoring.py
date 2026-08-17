@@ -6,7 +6,6 @@ import re
 
 from . import models
 from .deepseek import chat_complete
-from .rhyme import check_poem_pingze, format_report_text
 
 DIMENSIONS = ["神", "形"]
 JUDGES_PER_DIM = 2
@@ -54,10 +53,10 @@ def _judge_prompt(
     title: str,
     content: str,
     category: str,
-    template: models.Template | None,
     ref_summary: str,
-    check_report: str | None = None,
 ) -> str:
+    # 注意：评审不看格律（部分变格库中可能缺失，注入格律校验会误导打分）；
+    # 格律问题由用户主动使用「格律校验」功能单独检查。
     prompt = (
         f"你是一位诗词评审，请只从「{dim}」这一维度（{_DIM_DESC[dim]}）独立、完整地分析并打分。\n"
         f"{SCORE_ANCHOR}\n\n"
@@ -65,16 +64,6 @@ def _judge_prompt(
         f"【待评作品】标题：{title or '（无题）'}；类型：{category or '（未分类）'}\n"
         f"{content}\n"
     )
-    if dim == "形" and template and template.pattern:
-        prompt += f"\n【该类型格律参考】平仄：{'、'.join(template.pattern)}\n"
-        if template.rhyme:
-            prompt += f"押韵：{template.rhyme}\n"
-    if dim == "形" and check_report:
-        prompt += (
-            f"\n【逐字平仄校验报告（来自韵书数据库的确定性校验，权威）】\n"
-            f"{check_report}\n"
-            "请依据该报告核对格律，报告中指出的不合律处应如实反映在形维度评分与理由中。\n"
-        )
     prompt += '\n请只输出 JSON：{"score": <0-5 一位小数>, "reason": "<200字内理由>"}'
     return prompt
 
@@ -111,23 +100,18 @@ async def score_poem(
     model: str = "deepseek-v4-pro",
     reasoning: str = "high",
 ) -> tuple[list[dict], dict]:
-    """神/形各 2 评委并行独立评审，1 裁判综合。返回 (4份评委明细, 裁判报告)。"""
+    """神/形各 2 评委并行独立评审，1 裁判综合。返回 (4份评委明细, 裁判报告)。
+
+    注：template 参数保留仅为接口兼容，评审提示词不再引用词谱/格律内容。
+    """
     references = references or []
     ref_summary = _reference_summary(references)
-
-    # 确定性格律校验报告（RAG 注入形评委；词谱缺失时跳过）
-    check_report = None
-    if template is not None and template.pattern:
-        try:
-            check_report = format_report_text(check_poem_pingze(content, template))
-        except Exception:  # noqa: BLE001 韵书未入库等异常不应阻断评分
-            check_report = None
 
     async def judge_one(dim: str) -> dict:
         msgs = [
             {
                 "role": "user",
-                "content": _judge_prompt(dim, title, content, category, template, ref_summary, check_report),
+                "content": _judge_prompt(dim, title, content, category, ref_summary),
             }
         ]
         resp = await chat_complete(msgs, model=model, reasoning=reasoning)
