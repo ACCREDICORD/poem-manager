@@ -205,18 +205,19 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
   }
 
   const checkRhyme = async (templateId) => {
+    const tid = typeof templateId === 'number' ? templateId : undefined
     setRhymeLoading(true)
-    if (!templateId) setRhymeReport(null)
+    if (!tid) setRhymeReport(null)
     try {
       const payload = { content: poem.content, category: poem.category }
-      if (templateId) payload.template_id = templateId
+      if (tid) payload.template_id = tid
       const resp = await rhymeApi.check(payload)
       setRhymeReport(resp.report)
-      if (!templateId) {
+      if (!tid) {
         setRhymeTemplates(resp.templates)
         setRhymeSelectedId(resp.best_id)
       } else {
-        setRhymeSelectedId(templateId)
+        setRhymeSelectedId(tid)
       }
     } catch (e) {
       alert(e.message || '校验失败')
@@ -321,7 +322,7 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
             {rating ? '评分中…' : poem.agent_score != null ? '重新评分' : '让 agents 评分'}
           </button>
           <button
-            onClick={checkRhyme}
+            onClick={() => checkRhyme()}
             disabled={rhymeLoading || !poem.category}
             title="基于韵书数据库的逐字平仄/押韵校验"
             className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm text-indigo-700 disabled:opacity-50"
