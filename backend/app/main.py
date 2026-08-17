@@ -19,7 +19,7 @@ from .config import ADMIN_PASSWORD, ADMIN_USERNAME, UPLOAD_DIR
 from .database import Base, SessionLocal, engine
 from .routers import agent, auth, chat, imports, poems, references, rhyme, templates
 from .reference_seed import store_reference_poems
-from .rhyme_seed import store_rhyme_dict, store_tunes
+from .rhyme_seed import store_famous_tunes, store_rhyme_dict, store_tunes
 from .seed_data import seed_templates
 
 Base.metadata.create_all(bind=engine)
@@ -38,6 +38,13 @@ if "poems" in _insp.get_table_names():
         # 归位历史行的 NULL（SQLite 加列不应用 Python 端 default）
         _conn.execute(text("UPDATE poems SET appreciation = '' WHERE appreciation IS NULL"))
 
+if "templates" in _insp.get_table_names():
+    _tcols = {c["name"] for c in _insp.get_columns("templates")}
+    with engine.begin() as _conn:
+        if "rhyme_flags" not in _tcols:
+            _conn.execute(text("ALTER TABLE templates ADD COLUMN rhyme_flags TEXT"))
+        _conn.execute(text("UPDATE templates SET rhyme_flags = '[]' WHERE rhyme_flags IS NULL"))
+
 # Seed preset templates + ensure a single user exists
 with SessionLocal() as db:
     seed_templates(db)
@@ -45,8 +52,9 @@ with SessionLocal() as db:
     store_appreciation_refs(db)
     added_rhyme = store_rhyme_dict(db)
     added_tunes = store_tunes(db)
-    if added_rhyme or added_tunes:
-        print(f"[seed] 韵书 {added_rhyme} 条、词谱 {added_tunes} 个已入库")
+    synced_famous = store_famous_tunes(db)
+    if added_rhyme or added_tunes or synced_famous:
+        print(f"[seed] 韵书 {added_rhyme} 条、词谱 {added_tunes} 个、知名词牌同步 {synced_famous} 条已入库")
     user = db.query(models.User).filter(models.User.username == ADMIN_USERNAME).first()
     if user is None:
         password = ADMIN_PASSWORD or secrets.token_urlsafe(12)

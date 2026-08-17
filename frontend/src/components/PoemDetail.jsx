@@ -415,51 +415,60 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
           )}
         </div>
 
-        {/* 格律校验报告（韵书数据库确定性校验） */}
+        {/* 格律校验：逐字对照染色 */}
         {rhymeReport && (
           <div className="mt-5 border-t border-slate-100 pt-4">
             <h2 className="mb-2 text-sm font-semibold text-slate-500">
-              格律校验（{rhymeReport.book}）
+              格律校验 ·《{rhymeReport.template}》
             </h2>
-            <div className="space-y-2 text-sm">
-              <p className="text-xs text-slate-400">
-                词谱《{rhymeReport.template}》：实际 {rhymeReport.actual_lines} 句 / 词谱{' '}
-                {rhymeReport.expected_lines} 句；韵脚{rhymeReport.same_rhyme ? '同部' : '分属多部'}
-              </p>
-              {rhymeReport.issues.length === 0 ? (
-                <p className="rounded-lg bg-emerald-50 p-3 text-emerald-700">✅ 字数与平仄全部合律</p>
-              ) : (
-                rhymeReport.issues.map((it, i) => (
-                  <div key={i} className="rounded-lg bg-red-50 p-2.5">
-                    <p className="text-xs font-medium text-red-600">
-                      第{it.line}句：{it.text}（{it.problem}）
-                    </p>
-                    {it.detail && it.detail.length > 0 && (
-                      <ul className="mt-1 space-y-0.5 text-xs text-red-500">
-                        {it.detail.map((d, j) => (
-                          <li key={j}>
-                            第{d.pos}字「{d.char}」
-                            {d.problem === '平仄不合' ? `实为${d.actual}，应${d.expected}` : d.problem}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+            <div className="space-y-1.5">
+              {(rhymeReport.lines || []).map((ln, i) => (
+                <div key={i} className="rounded-lg bg-slate-50 px-3 py-1.5">
+                  <div className="text-lg leading-9 tracking-widest">
+                    {ln.text.split('').map((ch, j) => {
+                      const mark = ln.marks[j] || 'missing'
+                      const cls =
+                        mark === 'ok'
+                          ? 'text-emerald-600'
+                          : mark === 'bad'
+                            ? 'text-red-600 font-semibold'
+                            : mark === 'multi'
+                              ? 'text-amber-500'
+                              : mark === 'extra'
+                                ? 'text-red-400'
+                                : 'text-slate-300'
+                      return (
+                        <span key={j} className={cls}>
+                          {ch}
+                        </span>
+                      )
+                    })}
                   </div>
-                ))
-              )}
-              {rhymeReport.rhyme_check?.length > 0 && (
-                <details className="text-xs text-slate-500">
-                  <summary>韵脚分组（词林正韵）</summary>
-                  <div className="mt-1 space-y-1">
-                    {rhymeReport.rhyme_check.map((g, i) => (
-                      <p key={i}>
-                        {g.group}：{g.chars.join(' ')}
-                      </p>
-                    ))}
+                  <div className="text-sm leading-6 tracking-widest text-teal-600/80">
+                    {ln.expected.split('').map((ch, j) => {
+                      const isRhyme = ln.is_rhyme && j === ln.expected.length - 1
+                      return (
+                        <span
+                          key={j}
+                          className={
+                            isRhyme
+                              ? 'font-semibold text-teal-700 underline decoration-teal-500 decoration-2 underline-offset-4'
+                              : ''
+                          }
+                        >
+                          {ch}
+                        </span>
+                      )
+                    })}
+                    {ln.is_rhyme && <span className="ml-1 align-super text-[10px] text-teal-500">韵</span>}
                   </div>
-                </details>
-              )}
+                </div>
+              ))}
             </div>
+            <p className="mt-2 text-xs text-slate-400">
+              <span className="text-emerald-600">绿</span>=合律 · <span className="text-red-600">红</span>=不合 ·{' '}
+              <span className="text-amber-500">黄</span>=多音字 · 下划线=韵脚
+            </p>
           </div>
         )}
 

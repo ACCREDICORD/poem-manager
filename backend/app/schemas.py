@@ -131,4 +131,5 @@ class TemplateOut(TemplateBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    rhyme_flags: list[bool] = []
     created_at: datetime

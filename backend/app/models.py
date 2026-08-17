@@ -62,6 +62,7 @@ class Template(Base):
     total_chars: Mapped[int] = mapped_column(Integer, default=0)
     line_count: Mapped[int] = mapped_column(Integer, default=0)
     pattern: Mapped[list] = mapped_column(JSON, default=list)  # 每句「字数+平仄」
+    rhyme_flags: Mapped[list] = mapped_column(JSON, default=list)  # 每句是否押韵（与 pattern 对齐）
     rhyme: Mapped[str] = mapped_column(Text, default="")
     example: Mapped[str] = mapped_column(Text, default="")
     editable: Mapped[bool] = mapped_column(Boolean, default=True)

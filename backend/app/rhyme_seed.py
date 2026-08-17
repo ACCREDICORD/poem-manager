@@ -91,3 +91,55 @@ def store_tunes(db: Session) -> int:
         added += 1
     db.commit()
     return added + updated
+
+
+def store_famous_tunes(db: Session) -> int:
+    """20 个知名词牌：正格 + 两个变格（含韵脚标记与匹配例词）入库/同步。
+
+    - 正格存为词牌名本身，变格存为「词牌名·又一体1/2」；
+    - 同步保护：只有当行未被动过时才更新——判定为 editable=False（系统行）、
+      或 pattern 仍与 819 词谱库原版一致（store_tunes 插入的原始行）、
+      或预置词牌例词仍是预置原版；
+    - 用户手动改过的行（pattern 已变）不动。
+    """
+    path = SCRIPTS_DIR / "famous_tunes_seed.json"
+    if not path.exists():
+        return 0
+    # 819 词谱库原版 pattern（用于识别"未动过的库行"）
+    lib_patterns = {}
+    lib_path = SCRIPTS_DIR / "tunes_seed.json"
+    if lib_path.exists():
+        for e in json.loads(lib_path.read_text(encoding="utf-8")):
+            lib_patterns[(e.get("name") or "").strip()] = e.get("pattern") or []
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    touched = 0
+    for tune in data.get("tunes", []):
+        name = tune.get("name") or ""
+        preset = _PRESET_CI.get(name)
+        for e in tune.get("entries", []):
+            label = e.get("label") or ""
+            tpl_name = name if label == "正格" else f"{name}·{label.replace('①', '1').replace('②', '2')}"
+            pattern = e.get("pattern") or []
+            row = db.query(models.Template).filter(models.Template.name == tpl_name).first()
+            if row is not None:
+                is_preset_untouched = bool(preset and row.example == preset.get("example"))
+                is_lib_untouched = bool(
+                    label == "正格" and row.pattern == lib_patterns.get(name)
+                )
+                if row.editable and not is_preset_untouched and not is_lib_untouched:
+                    continue  # 用户改过：不动
+            else:
+                row = models.Template(name=tpl_name, kind="ci")
+                db.add(row)
+            row.kind = "ci"
+            row.pattern = pattern
+            row.rhyme_flags = list(e.get("rhyme_flags") or [])
+            row.total_chars = sum(len(s) for s in pattern)
+            row.line_count = len(pattern)
+            row.rhyme = e.get("format_desc") or ""
+            row.example = e.get("example") or ""
+            row.editable = False
+            touched += 1
+    db.commit()
+    return touched

@@ -146,10 +146,18 @@ def check_poem_pingze(content: str, template, book: str = "平水韵") -> dict:
         # 近体诗：按标点分句（一句=一联内的小句），按黏对规则推导起收式
         lines = _split_clauses("\n".join(raw_lines[start:]))
         pattern = _derive_shi_pattern(lines)
+        flags = [i % 2 == 1 for i in range(len(lines))]
+        # 首句入韵：首句末字与第二句末字同韵部则首句也押韵
+        if len(lines) >= 2:
+            g1 = {r for _, r in char_entries(lines[0][-1], "平水韵")}
+            g2 = {r for _, r in char_entries(lines[1][-1], "平水韵")}
+            if g1 and g2 and (g1 & g2):
+                flags[0] = True
     else:
         # 词：按逗号分句，对齐词谱
         lines = _split_clauses("\n".join(raw_lines[start:]))
         pattern = list(template.pattern or [])
+        flags = list(getattr(template, "rhyme_flags", None) or [])
 
     issues = []
     for i, chars in enumerate(lines):
@@ -196,6 +204,38 @@ def check_poem_pingze(content: str, template, book: str = "平水韵") -> dict:
         elif detail:
             issues.append({"line": i + 1, "text": chars, "problem": "平仄不合", "detail": detail})
 
+    # 逐字对齐数据（供前端染色：ok 绿 / bad 红 / multi 黄 / extra 红 / missing 灰 / zhong 可平可仄）
+    aligned = []
+    for i, chars in enumerate(lines):
+        if i >= len(pattern):
+            break
+        expected = pattern[i]
+        marks = []
+        n = max(len(chars), len(expected))
+        for j in range(n):
+            if j >= len(chars):
+                marks.append("missing")
+            elif j >= len(expected):
+                marks.append("extra")
+            elif expected[j] == "中":
+                marks.append("zhong")
+            else:
+                actual = char_pingze(chars[j], book)
+                if actual is None:
+                    marks.append("multi")
+                elif actual != expected[j]:
+                    marks.append("bad")
+                else:
+                    marks.append("ok")
+        aligned.append(
+            {
+                "text": chars,
+                "expected": expected,
+                "is_rhyme": bool(flags[i]) if i < len(flags) else False,
+                "marks": marks,
+            }
+        )
+
     return {
         "template": getattr(template, "name", ""),
         "kind": kind,
@@ -203,6 +243,7 @@ def check_poem_pingze(content: str, template, book: str = "平水韵") -> dict:
         "expected_lines": len(pattern),
         "actual_lines": len(lines),
         "pattern": pattern,
+        "lines": aligned,
         "issues": issues,
         "total_violations": sum(len(i.get("detail", [])) for i in issues),
     }
