@@ -13,6 +13,8 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
   const [appr, setAppr] = useState(false)
   const [apprMode, setApprMode] = useState('deep')
   const [rhymeReport, setRhymeReport] = useState(null)
+  const [rhymeTemplates, setRhymeTemplates] = useState([])
+  const [rhymeSelectedId, setRhymeSelectedId] = useState(null)
   const [rhymeLoading, setRhymeLoading] = useState(false)
   const pollRef = useRef(null)
   const apprPollRef = useRef(null)
@@ -202,12 +204,20 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
     }
   }
 
-  const checkRhyme = async () => {
+  const checkRhyme = async (templateId) => {
     setRhymeLoading(true)
-    setRhymeReport(null)
+    if (!templateId) setRhymeReport(null)
     try {
-      const report = await rhymeApi.check({ content: poem.content, category: poem.category })
-      setRhymeReport(report)
+      const payload = { content: poem.content, category: poem.category }
+      if (templateId) payload.template_id = templateId
+      const resp = await rhymeApi.check(payload)
+      setRhymeReport(resp.report)
+      if (!templateId) {
+        setRhymeTemplates(resp.templates)
+        setRhymeSelectedId(resp.best_id)
+      } else {
+        setRhymeSelectedId(templateId)
+      }
     } catch (e) {
       alert(e.message || '校验失败')
     } finally {
@@ -421,6 +431,26 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
             <h2 className="mb-2 text-sm font-semibold text-slate-500">
               格律校验 ·《{rhymeReport.template}》
             </h2>
+            {rhymeTemplates.length > 1 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {rhymeTemplates.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => checkRhyme(t.id)}
+                    className={`rounded-full border px-2.5 py-1 text-xs ${
+                      rhymeSelectedId === t.id
+                        ? 'border-teal-600 bg-teal-600 text-white'
+                        : 'border-slate-300 bg-white text-slate-600'
+                    }`}
+                  >
+                    {t.label}
+                    <span className="ml-1 opacity-75">
+                      {t.violations === 0 ? '✓' : `${t.violations}处`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="space-y-1.5">
               {(rhymeReport.lines || []).map((ln, i) => (
                 <div key={i} className="rounded-lg bg-slate-50 px-3 py-1.5">
