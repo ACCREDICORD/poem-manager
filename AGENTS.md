@@ -56,6 +56,7 @@ ADMIN_PASSWORD=一个强密码          # 启动时同步为此密码
 6. **参考库初始化**：`POST /api/references/seed`（批量）或 `/api/references/{id}/init`（单个），只评审 `article` 为空的条目。
 7. **鉴权**：除 `/api/auth/login`、`/api/health` 外，`/api` 和 `/media` 都要带 `Authorization: Bearer <token>`。
 8. **AI 工作区体系**（agent 模式）：`session_id` 即工作区标识，`general` 全局、`poems`/`templates`/`references` 为三个栏目工作区（父级）、`poem_{id}` 为单首诗词工作区（子级）。同级工作区工具集互相隔离；子工作区做库级/他诗操作时步骤会被标记 `escalation=true`（越权申请），用户批准后才执行。工作区系统提示词在 `app/routers/agent.py` 的 `build_system_prompt`。agent 对话持久化在 `messages` 表（`mode='agent'`），`/api/agent/history` 读取；chat 历史接口只返回 `mode='chat'`，两者互不串扰。
+9. **格律校验（M7）**：韵书字表在 `rhyme_dict` 表（四部韵书，启动时从 `backend/scripts/rhyme_seed.json` 幂等入库；词谱从 `tunes_seed.json` 灌入 `templates`）。校验逻辑在 `app/rhyme.py`：诗按黏对规则推导起收式、只严查二四六；词逐句对照词谱（正文按逗号分句、跳过标题行）。接口在 `app/routers/rhyme.py`。评分「形」评委提示词已注入逐字平仄校验报告。重新抓取数据：`python scripts/scrape_rhyme.py`（注意礼貌限速与页面结构变化）。
 
 ## 部署
 

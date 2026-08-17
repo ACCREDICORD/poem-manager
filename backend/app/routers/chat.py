@@ -26,6 +26,7 @@ def build_system_prompt(db: Session, poem_id: int | None, template_id: int | Non
     parts = [
         "你是一位精通中国古典诗词创作的助手，擅长修改字句、校对平仄格律、押韵、点评与赏析。"
         "请用中文回答，简洁准确，直接给出修改建议或诗词内容。"
+        "判断平仄、押韵时请遵循《平水韵》《词林正韵》等韵书规范（系统内置韵书数据库可精确校验），不要凭记忆猜测。"
     ]
     poem = None
     if poem_id:

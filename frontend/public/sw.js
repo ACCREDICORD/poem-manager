@@ -17,7 +17,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
   if (url.pathname.startsWith('/api') || url.pathname.startsWith('/media')) return
 
-  // HTML（导航请求）：网络优先，保证拿到最新入口，避免旧哈希 404
+  // HTML（导航请求）：网络优先，失败回退缓存入口（保证断隧道时也能打开应用）
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
@@ -26,7 +26,9 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE).then((c) => c.put(event.request, copy))
           return res
         })
-        .catch(() => caches.match(event.request)),
+        .catch(() =>
+          caches.match(event.request).then((cached) => cached || caches.match('/')),
+        ),
     )
     return
   }

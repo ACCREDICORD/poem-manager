@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { poemsApi, referencesApi, mediaUrl } from '../api.js'
+import { poemsApi, referencesApi, mediaUrl, rhymeApi } from '../api.js'
 import { db } from '../db.js'
 import { generateAppreciationLocal } from '../directAi.js'
 import ChatPanel from './ChatPanel.jsx'
@@ -12,6 +12,8 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
   const [rateMode, setRateMode] = useState('quick')
   const [appr, setAppr] = useState(false)
   const [apprMode, setApprMode] = useState('deep')
+  const [rhymeReport, setRhymeReport] = useState(null)
+  const [rhymeLoading, setRhymeLoading] = useState(false)
   const pollRef = useRef(null)
   const apprPollRef = useRef(null)
 
@@ -200,6 +202,19 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
     }
   }
 
+  const checkRhyme = async () => {
+    setRhymeLoading(true)
+    setRhymeReport(null)
+    try {
+      const report = await rhymeApi.check({ content: poem.content, category: poem.category })
+      setRhymeReport(report)
+    } catch (e) {
+      alert(e.message || '校验失败')
+    } finally {
+      setRhymeLoading(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-2xl px-4 pb-16 pt-4">
       <header className="mb-4 flex items-center justify-between">
@@ -294,6 +309,14 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
             className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm text-teal-700 disabled:opacity-50"
           >
             {rating ? '评分中…' : poem.agent_score != null ? '重新评分' : '让 agents 评分'}
+          </button>
+          <button
+            onClick={checkRhyme}
+            disabled={rhymeLoading || !poem.category}
+            title="基于韵书数据库的逐字平仄/押韵校验"
+            className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm text-indigo-700 disabled:opacity-50"
+          >
+            {rhymeLoading ? '校验中…' : '格律校验'}
           </button>
         </div>
 
@@ -391,6 +414,54 @@ export default function PoemDetail({ id, onBack, onEdit, onDeleted }) {
             )
           )}
         </div>
+
+        {/* 格律校验报告（韵书数据库确定性校验） */}
+        {rhymeReport && (
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <h2 className="mb-2 text-sm font-semibold text-slate-500">
+              格律校验（{rhymeReport.book}）
+            </h2>
+            <div className="space-y-2 text-sm">
+              <p className="text-xs text-slate-400">
+                词谱《{rhymeReport.template}》：实际 {rhymeReport.actual_lines} 句 / 词谱{' '}
+                {rhymeReport.expected_lines} 句；韵脚{rhymeReport.same_rhyme ? '同部' : '分属多部'}
+              </p>
+              {rhymeReport.issues.length === 0 ? (
+                <p className="rounded-lg bg-emerald-50 p-3 text-emerald-700">✅ 字数与平仄全部合律</p>
+              ) : (
+                rhymeReport.issues.map((it, i) => (
+                  <div key={i} className="rounded-lg bg-red-50 p-2.5">
+                    <p className="text-xs font-medium text-red-600">
+                      第{it.line}句：{it.text}（{it.problem}）
+                    </p>
+                    {it.detail && it.detail.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 text-xs text-red-500">
+                        {it.detail.map((d, j) => (
+                          <li key={j}>
+                            第{d.pos}字「{d.char}」
+                            {d.problem === '平仄不合' ? `实为${d.actual}，应${d.expected}` : d.problem}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))
+              )}
+              {rhymeReport.rhyme_check?.length > 0 && (
+                <details className="text-xs text-slate-500">
+                  <summary>韵脚分组（词林正韵）</summary>
+                  <div className="mt-1 space-y-1">
+                    {rhymeReport.rhyme_check.map((g, i) => (
+                      <p key={i}>
+                        {g.group}：{g.chars.join(' ')}
+                      </p>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Annotations */}
         {poem.annotations?.length > 0 && (

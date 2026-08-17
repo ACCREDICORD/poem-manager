@@ -22,6 +22,18 @@ export const authApi = {
 export const poemsApi = {
   async list(params = {}) {
     let rows = await db.poems.toArray()
+    // 自愈：本地镜像为空（如清缓存后首次打开）且手机有网时，直接从服务器拉取
+    if (rows.length === 0 && navigator.onLine) {
+      try {
+        const fresh = await server.poems.list({})
+        if (fresh && fresh.length) {
+          await db.poems.bulkPut(fresh.map((p) => ({ ...p, syncState: 'synced' })))
+          rows = await db.poems.toArray()
+        }
+      } catch {
+        // 服务器不可达：保持本地（空）列表
+      }
+    }
     if (params.q) {
       const q = params.q.toLowerCase()
       rows = rows.filter(
@@ -270,6 +282,15 @@ export const agentApi = {
   },
   history(sessionId) {
     return request(`/agent/history?session_id=${encodeURIComponent(sessionId)}`)
+  },
+}
+
+export const rhymeApi = {
+  lookup(char, book = '平水韵') {
+    return request(`/rhyme/lookup?char=${encodeURIComponent(char)}&book=${encodeURIComponent(book)}`)
+  },
+  check(data) {
+    return request('/rhyme/check', { method: 'POST', body: JSON.stringify(data) })
   },
 }
 

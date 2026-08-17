@@ -127,6 +127,19 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
+class RhymeDict(Base):
+    """韵书字表：一个韵部一行，chars 为该韵部全部用字。"""
+
+    __tablename__ = "rhyme_dict"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    book: Mapped[str] = mapped_column(String(20), index=True)  # 平水韵/词林正韵/中原音韵/中华通韵
+    tone: Mapped[str] = mapped_column(String(10), default="")  # 平/上/去/入/仄/平阴/平阳
+    rhyme_name: Mapped[str] = mapped_column(String(100), default="")  # 韵目，如一东/第1部·东
+    chars: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class AuthSession(Base):
     """持久化登录会话：token 存 SQLite，后端重启后仍有效。"""
 

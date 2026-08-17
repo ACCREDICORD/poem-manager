@@ -17,8 +17,9 @@ from .appreciation_seed import store_appreciation_refs
 from .auth import auth_middleware, hash_password
 from .config import ADMIN_PASSWORD, ADMIN_USERNAME, UPLOAD_DIR
 from .database import Base, SessionLocal, engine
-from .routers import agent, auth, chat, imports, poems, references, templates
+from .routers import agent, auth, chat, imports, poems, references, rhyme, templates
 from .reference_seed import store_reference_poems
+from .rhyme_seed import store_rhyme_dict, store_tunes
 from .seed_data import seed_templates
 
 Base.metadata.create_all(bind=engine)
@@ -42,6 +43,10 @@ with SessionLocal() as db:
     seed_templates(db)
     store_reference_poems(db)
     store_appreciation_refs(db)
+    added_rhyme = store_rhyme_dict(db)
+    added_tunes = store_tunes(db)
+    if added_rhyme or added_tunes:
+        print(f"[seed] 韵书 {added_rhyme} 条、词谱 {added_tunes} 个已入库")
     user = db.query(models.User).filter(models.User.username == ADMIN_USERNAME).first()
     if user is None:
         password = ADMIN_PASSWORD or secrets.token_urlsafe(12)
@@ -74,6 +79,16 @@ app.add_middleware(
 )
 app.middleware("http")(auth_middleware)
 
+
+@app.middleware("http")
+async def no_cache_entry_files(request, call_next):
+    """index.html / sw.js 禁止缓存：避免旧入口引用已删除的哈希资源导致白屏。"""
+    response = await call_next(request)
+    if request.url.path in ("/", "/sw.js"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(poems.router, prefix="/api/poems", tags=["poems"])
 app.include_router(templates.router, prefix="/api/templates", tags=["templates"])
@@ -81,6 +96,7 @@ app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(agent.router, prefix="/api/agent", tags=["agent"])
 app.include_router(imports.router, prefix="/api/import", tags=["import"])
 app.include_router(references.router, prefix="/api/references", tags=["references"])
+app.include_router(rhyme.router, prefix="/api/rhyme", tags=["rhyme"])
 
 # Serve uploaded poem images (protected by auth middleware)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
